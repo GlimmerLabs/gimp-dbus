@@ -1,4 +1,5 @@
 gimp-dbus
 =========
 
-A Gimp plugin that provides some D-Bus services for gimp.  (Reveals the PDB, among other things.)
+A Gimp plugin that provides a simple D-Bus server.  This server reveals
+most of the PDB operations, among other things.
