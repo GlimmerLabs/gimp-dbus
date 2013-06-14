@@ -32,7 +32,8 @@
 
 #include <libgimp/gimp.h>    
 #include <libgimp/gimpui.h>    
-#include <gio/gio.h>        
+#include <gio/gio.h> 
+#include <gtk/gtk.h>       
 #include <stdlib.h>        
 #include <stdio.h>      
 #include <stdarg.h>
@@ -113,7 +114,7 @@ struct gimpnames {
  * specified parameters.  Send the result of the call to
  * invocation.
  */
-void gimp_dbus_handle_method_call (GDBusConnection       *connection,
+int gimp_dbus_handle_method_call (GDBusConnection       *connection,
                                  const gchar           *method_name,
                                  GVariant              *parameters,
                                  GDBusMethodInvocation *invocation);
@@ -336,6 +337,9 @@ gimp_dbus_pdb_type_to_signature (GimpPDBArgType type)
 
   switch (type)
     {
+    case GIMP_PDB_COLOR:
+      result = G_VARIANT_TYPE_INT32;
+      break;
     case GIMP_PDB_INT32:
       result = G_VARIANT_TYPE_INT32;
       break;
@@ -406,6 +410,8 @@ gimp_dbus_g_variant_to_gimp_param (GVariant         *parameter,
   gint16* array16 = NULL;
   guint8* array8 = NULL;
   gdouble* arrayd = NULL;
+  guchar r, g, b;      //int rgb
+  GimpRGB tempRGB; 
 
   // Make sure that types match
   const gchar *paramtype = 
@@ -421,6 +427,27 @@ gimp_dbus_g_variant_to_gimp_param (GVariant         *parameter,
 
   switch (paramdef->type)
     {
+    // Special case: Colors.  Need to convert from whatever
+    // type we received to a gimp_rgb.  Right now, we only
+    // handle integers.  (Will need fixing above to handle
+    // other representations
+    case GIMP_PDB_COLOR:
+      temp32 = g_variant_get_int32 (parameter);
+      LOG ("  parameter  '%s' is %d, will be color",
+	   paramdef->name, param->data.d_int32);   
+      // Unpack r, g, and b as uchars 
+      r = (guchar) (temp32 >> 16);
+      g = (guchar) ((temp32 >> 8) & 255);
+      b = (guchar) (temp32 & 255);      
+      // Create the RGB
+      gimp_rgb_set_uchar (&tempRGB, r, g, b);
+      // Set data field to the RGB we created
+      param->data.d_color = tempRGB;
+   
+      return TRUE;
+
+
+      return TRUE;   
     // All of these types are effectively integers.
     case GIMP_PDB_INT32:
     case GIMP_PDB_DISPLAY:
@@ -516,6 +543,7 @@ gimp_dbus_g_variant_to_gimp_param (GVariant         *parameter,
     } // switch
 } // gimp_dbus_g_variant_to_gimp_param
 
+
 /**
  * Convert a GVariant to a newly allocated array of GimpParams.
  */
@@ -544,6 +572,7 @@ gimp_dbus_g_variant_to_gimp_array (GVariant       *parameters,
   return TRUE;
 } // gimp_dbus_g_variant_to_gimp_array
 
+
 /**
  * Convert a GimpParam to a newly allocated GVariant.
  */
@@ -552,9 +581,20 @@ gimp_dbus_gimp_param_to_g_variant (GimpParam value, int *asize)
 {
   GVariantBuilder abuilder;
   int arrcounter = 0;
+  int icolor;                // A color represented as an integer
+  guchar r, g, b;            // Components of the color.
 
   switch (value.type)
     {
+      // Special case: Colors
+    case GIMP_PDB_COLOR:
+      gimp_rgb_get_uchar (&(value.data.d_color), &r, &g, &b);
+      guint gur = CLAMP ((gint) r, 0, 255);
+      guint gug = CLAMP ((gint) g, 0, 255);
+      guint gub = CLAMP ((gint) b, 0, 255);
+      icolor = (gur << 16) | (gug << 8) | (gub << 0);
+      return g_variant_new ("i", icolor);
+
     case GIMP_PDB_INT32:
     case GIMP_PDB_DISPLAY:
     case GIMP_PDB_IMAGE:
@@ -885,6 +925,15 @@ methodmaker (struct gimpnames *nms)
 
 }//methodmaker
 
+int
+gimp_gbus_handle_rgb_red (GDBusMethodInvocation *invocation,
+			  GVariant *parameters)
+{
+  // Check that we have one parameter and that it's an integer.
+  // Grab the integer
+  // And extract the red component
+} // gimp_gbus_handle_rgb_red
+
 
 // +------------------+------------------------------------------------
 // | Primary Handlers |
@@ -893,7 +942,7 @@ methodmaker (struct gimpnames *nms)
 /**
  * What to do when we get a method call.
  */
-void
+int
 gimp_dbus_handle_method_call (GDBusConnection       *connection,
                               const gchar           *method_name,
                               GVariant              *parameters,
@@ -920,6 +969,12 @@ gimp_dbus_handle_method_call (GDBusConnection       *connection,
   gint             nvalues;          // Number of return values.
   GVariant        *result;
 
+  /*
+  if (strcmp (method_name, "_rgb_red"))
+    return gimp_dbus_handle_rgb_red (invocation, parameters);
+  */
+
+  // Normal case; PDB functions
   proc_name = strrep (g_strdup (method_name), '_', '-');
 
   // Look up the information on the procedure in the PDB
@@ -939,7 +994,7 @@ gimp_dbus_handle_method_call (GDBusConnection       *connection,
                                              G_IO_ERROR_INVALID_ARGUMENT,
                                              "Invalid method: '%s'",
                                              method_name);
-      return;
+      return FALSE;
     } // if we can't get the information
   LOG ("Successfully extracted PDB info.");
 
@@ -973,6 +1028,7 @@ gimp_dbus_handle_method_call (GDBusConnection       *connection,
 
   // Cleanup: TODO
   // g_variant_unref (result);
+  return TRUE;
 } // gimp_dbus_handle_pdb_method_call
 
 
@@ -1110,4 +1166,3 @@ run (const gchar      *name,
 
   return;
 } // run
-
