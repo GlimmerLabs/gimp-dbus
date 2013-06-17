@@ -60,6 +60,11 @@
 #define GIMP_DBUS_INTERFACE_PDB "edu.grinnell.cs.glimmer.pdb"
 
 /**
+ * The additional interface.
+ */
+#define GIMP_DBUS_INTERFACE_ADDITIONAL "edu.grinnell.cs.glimmer.gimpplus"
+
+/**
  * Where we put this service in the menu.
  */
 #define GIMP_DBUS_MENU "<Toolbox>/Xtns/MediaScript/DBus Server"
@@ -105,6 +110,26 @@ struct gimpnames {
 };
 
 
+// +---------+--------------------------------------------------------
+// | Globals |
+// +---------+
+
+/**
+ * The XML to describe the additional services that we provide.
+ */
+static const gchar alt_introspection_xml[] = 
+  "<node>"
+  "  <interface name='" GIMP_DBUS_INTERFACE_ADDITIONAL "'>"
+  "    <method name='_rgb_red'>"
+  "      <arg type='i' name='color' direction='in'/>"
+  "      <arg type='i' name='red' direction='out'/>"
+  "    </method>"
+  "  </interface>"
+  "</node>";
+
+static const GDBusNodeInfo *alt_introspection_data = NULL;
+
+
 // +-----------------+------------------------------------------------
 // | Predeclarations |
 // +-----------------+
@@ -114,10 +139,10 @@ struct gimpnames {
  * specified parameters.  Send the result of the call to
  * invocation.
  */
-int gimp_dbus_handle_method_call (GDBusConnection       *connection,
-                                 const gchar           *method_name,
-                                 GVariant              *parameters,
-                                 GDBusMethodInvocation *invocation);
+int gimp_dbus_handle_pdb_method_call (GDBusConnection       *connection,
+                                      const gchar           *method_name,
+                                      GVariant              *parameters,
+                                      GDBusMethodInvocation *invocation);
 
 /**
  * GIMP plugin query.
@@ -134,39 +159,74 @@ static void run   (const gchar      *name,
                    GimpParam       **return_vals);
 
 /**
- * DBus method call handler.
+ * DBus method call handler for PDB methods.
  */
-static void handle_method_call (GDBusConnection       *connection,
-                                const gchar           *sender,
-                                const gchar           *object_path,
-                                const gchar           *interface_name,
-                                const gchar           *method_name,
-                                GVariant              *parameters,
-                                GDBusMethodInvocation *invocation,
-                                gpointer               user_data);
+static void pdb_handle_method_call (GDBusConnection       *connection,
+                                    const gchar           *sender,
+                                    const gchar           *object_path,
+                                    const gchar           *interface_name,
+                                    const gchar           *method_name,
+                                    GVariant              *parameters,
+                                    GDBusMethodInvocation *invocation,
+                                    gpointer               user_data);
 
 /**
- * DBus get-propery handler.
+ * DBus get-propery handler for PDB properties.
  */
-static GVariant *handle_get_property (GDBusConnection  *connection,
-                                      const gchar      *sender,
-                                      const gchar      *object_path,
-                                      const gchar      *interface_name,
-                                      const gchar      *property_name,
-                                      GError          **error,
-                                      gpointer          user_data);
+static GVariant *pdb_handle_get_property (GDBusConnection  *connection,
+                                          const gchar      *sender,
+                                          const gchar      *object_path,
+                                          const gchar      *interface_name,
+                                          const gchar      *property_name,
+                                          GError          **error,
+                                          gpointer          user_data);
 
 /**
- * DBus set-property handler.
+ * DBus set-property handler for PDB properties.
  */
-static gboolean handle_set_property (GDBusConnection  *connection,
-                                     const gchar      *sender,
-                                     const gchar      *object_path,
-                                     const gchar      *interface_name,
-                                     const gchar      *property_name,
-                                     GVariant         *value,
-                                     GError          **error,
-                                     gpointer          user_data);
+static gboolean pdb_handle_set_property (GDBusConnection  *connection,
+                                         const gchar      *sender,
+                                         const gchar      *object_path,
+                                         const gchar      *interface_name,
+                                         const gchar      *property_name,
+                                         GVariant         *value,
+                                         GError          **error,
+                                         gpointer          user_data);
+
+/**
+ * DBus method call handler for alternate methods.
+ */
+static void alt_handle_method_call (GDBusConnection       *connection,
+                                    const gchar           *sender,
+                                    const gchar           *object_path,
+                                    const gchar           *interface_name,
+                                    const gchar           *method_name,
+                                    GVariant              *parameters,
+                                    GDBusMethodInvocation *invocation,
+                                    gpointer               user_data);
+
+/**
+ * DBus get-propery handler for alternate properties.
+ */
+static GVariant *alt_handle_get_property (GDBusConnection  *connection,
+                                          const gchar      *sender,
+                                          const gchar      *object_path,
+                                          const gchar      *interface_name,
+                                          const gchar      *property_name,
+                                          GError          **error,
+                                          gpointer          user_data);
+
+/**
+ * DBus set-property handler for alternate properties.
+ */
+static gboolean alt_handle_set_property (GDBusConnection  *connection,
+                                         const gchar      *sender,
+                                         const gchar      *object_path,
+                                         const gchar      *interface_name,
+                                         const gchar      *property_name,
+                                         GVariant         *value,
+                                         GError          **error,
+                                         gpointer          user_data);
 
 /**
  * Build information on one argument to a method.  Returns NULL if
@@ -183,24 +243,132 @@ g_dbus_arg_new (gchar                *name,
 // +---------+
 
 /**
- * The GDBusNodeInfo to be published to the dbus.
+ * The GDBusNodeInfo on the PDB to be published to the dbus.
  */
-static GDBusNodeInfo *finalnode = NULL;
+static GDBusNodeInfo *pdbnode = NULL;
 
 /**
- * Information on the registration id for this process.
+ * Information on the registration id for the PDB interface.
  */
-static guint registration_id;
+static guint pdb_registration_id;
 
 /**
- * The standard DBus handlers.
+ * Information on the registration id for the alternate interface.
  */
-static const GDBusInterfaceVTable interface_vtable =
+static guint alt_registration_id;
+
+/**
+ * The standard DBus handlers for PDB.
+ */
+static const GDBusInterfaceVTable pdb_interface_vtable =
   {
-    handle_method_call,
-    handle_get_property,
-    handle_set_property
+    pdb_handle_method_call,
+    pdb_handle_get_property,
+    pdb_handle_set_property
   };
+
+/**
+ * The standard DBus handlers for alternate functions.
+ */
+static const GDBusInterfaceVTable alt_interface_vtable =
+  {
+    alt_handle_method_call,
+    alt_handle_get_property,
+    alt_handle_set_property
+  };
+
+
+// +----------------------------+--------------------------------------
+// | Support for Error Checking |
+// +----------------------------+
+
+/* 
+Sample code for error checking.  (This code may not be necessary if
+DBus does the checking for us.
+
+  int nparams = g_variant_n_children (parameters);
+  // Check that we have one parameter and that it's an integer.
+  if (nparams != 1)
+    {
+      gimp_dbus_report_invalid_paramcount (invocation, "FUN", 1, nparams);
+      return;
+    } 
+
+  GVariant *child = g_variant_get_child_value (parameters, 0);
+  if (g_variant_get_type (child) != != G_VARIANT_TYPE_INT32)
+    {
+      gimp_dbus_report_invalid_parameter (invocation, "FUN", 0, "integer", 
+                                          child);
+    }
+ */
+
+/**
+ * Return an error about a particular parameter.
+ */
+static void
+gimp_dbus_report_invalid_parameter (GDBusMethodInvocation *invocation,
+                                    const gchar *method_name,
+                                    int paramnum,
+                                    const gchar *paramtype,
+                                    GVariant *param)
+{
+  g_dbus_method_invocation_return_error (
+    invocation,
+    G_IO_ERROR,
+    G_IO_ERROR_INVALID_ARGUMENT,
+    "%s expects %s for parameter %d, received %s",
+     method_name, paramtype, paramnum, g_variant_get_type_string);
+} // gimp_dbus_report_invalid_parameter
+
+/**
+ * Return an error about the number of parameters.
+ */
+static void
+gimp_dbus_report_invalid_paramcount (GDBusMethodInvocation *invocation,
+                                     const gchar *method_name,
+                                     int expected,
+                                     int actual)
+{
+  if (expected == 1)
+    {
+      g_dbus_method_invocation_return_error (
+        invocation,
+        G_IO_ERROR,
+        G_IO_ERROR_INVALID_ARGUMENT,
+        "%s expects 1 parameter, received %d",
+        method_name, actual);
+    } // if we expected one parameters
+  else
+    {
+      g_dbus_method_invocation_return_error (
+        invocation,
+        G_IO_ERROR,
+        G_IO_ERROR_INVALID_ARGUMENT,
+        "%s expects %d parameters, received %d",
+        method_name, expected, actual);
+    }
+} // gimp_dbus_report_invalid_paramcount
+
+
+// +---------------------------------+---------------------------------
+// | Methods for Alternate Interface |
+// +---------------------------------+
+
+void
+gimp_dbus_handle_rgb_red (GDBusMethodInvocation *invocation,
+			  GVariant *parameters)
+{
+  // Grab the parameter
+  GVariant *param = g_variant_get_child_value (parameters, 0);
+  // Grab the integer
+  int color = g_variant_get_int32 (param);
+  // Extract the red component
+  int red = color >> 16;
+  // Convert it back to a GVariant
+  GVariant *result = g_variant_new ("(i)", red);
+  // And return it
+  g_dbus_method_invocation_return_value (invocation, result);
+} // gimp_gbus_handle_rgb_red
 
 
 // +------------------------+------------------------------------------
@@ -208,29 +376,39 @@ static const GDBusInterfaceVTable interface_vtable =
 // +------------------------+
 
 static void
-handle_method_call (GDBusConnection       *connection,
-                    const gchar           *sender,
-                    const gchar           *object_path,
-                    const gchar           *interface_name,
-                    const gchar           *method_name,
-                    GVariant              *parameters,
-                    GDBusMethodInvocation *invocation,
-                    gpointer               user_data)
+alt_handle_method_call (GDBusConnection       *connection,
+                        const gchar           *sender,
+                        const gchar           *object_path,
+                        const gchar           *interface_name,
+                        const gchar           *method_name,
+                        GVariant              *parameters,
+                        GDBusMethodInvocation *invocation,
+                        gpointer               user_data)
 {
-  gimp_dbus_handle_method_call (connection, 
-  			        method_name, 
-			        parameters, 
-			        invocation);
-} // gimp_dbus_handle_method_call
+  // Case: _rgb_red
+  if (g_strcmp0 (method_name, "_rgb_red") == 0)
+    {
+      gimp_dbus_handle_rgb_red (invocation, parameters);
+      return;
+    } // _rgb_red
+  else
+    {
+      g_dbus_method_invocation_return_error (invocation,
+                                             G_IO_ERROR,
+                                             G_IO_ERROR_INVALID_ARGUMENT,
+                                             "GimpPlus: Invalid method: '%s'",
+                                             method_name);
+    } // default
+} // alt_handle_method_call
 
 static GVariant *
-handle_get_property (GDBusConnection  *connection,
-                     const gchar      *sender,
-                     const gchar      *object_path,
-                     const gchar      *interface_name,
-                     const gchar      *property_name,
-                     GError          **error,
-                     gpointer          user_data)
+alt_handle_get_property (GDBusConnection  *connection,
+                         const gchar      *sender,
+                         const gchar      *object_path,
+                         const gchar      *interface_name,
+                         const gchar      *property_name,
+                         GError          **error,
+                         gpointer          user_data)
 {
   g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
                "No property %s found in interface %s.",
@@ -239,17 +417,17 @@ handle_get_property (GDBusConnection  *connection,
 
   // NULL signals failure
   return NULL;    
-} //handle_get_property
+} // alt_handle_get_property
 
 static gboolean
-handle_set_property (GDBusConnection  *connection,
-                     const gchar      *sender,
-                     const gchar      *object_path,
-                     const gchar      *interface_name,
-                     const gchar      *property_name,
-                     GVariant         *value,
-                     GError          **error,
-                     gpointer          user_data)
+alt_handle_set_property (GDBusConnection  *connection,
+                         const gchar      *sender,
+                         const gchar      *object_path,
+                         const gchar      *interface_name,
+                         const gchar      *property_name,
+                         GVariant         *value,
+                         GError          **error,
+                         gpointer          user_data)
 {
   g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
                "No property %s found in interface %s.",
@@ -257,7 +435,59 @@ handle_set_property (GDBusConnection  *connection,
 	       interface_name);
   // false signals failure.
   return FALSE; 
-}//handle_set_property
+}// alt_handle_set_property
+
+static void
+pdb_handle_method_call (GDBusConnection       *connection,
+                        const gchar           *sender,
+                        const gchar           *object_path,
+                        const gchar           *interface_name,
+                        const gchar           *method_name,
+                        GVariant              *parameters,
+                        GDBusMethodInvocation *invocation,
+                        gpointer               user_data)
+{
+  gimp_dbus_handle_pdb_method_call (connection, 
+  			            method_name, 
+			            parameters, 
+			            invocation);
+} // pdb_handle_method_call
+
+static GVariant *
+pdb_handle_get_property (GDBusConnection  *connection,
+                         const gchar      *sender,
+                         const gchar      *object_path,
+                         const gchar      *interface_name,
+                         const gchar      *property_name,
+                         GError          **error,
+                         gpointer          user_data)
+{
+  g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+               "No property %s found in interface %s.",
+	       property_name, 
+	       interface_name);
+
+  // NULL signals failure
+  return NULL;    
+} // pdb_handle_get_property
+
+static gboolean
+pdb_handle_set_property (GDBusConnection  *connection,
+                         const gchar      *sender,
+                         const gchar      *object_path,
+                         const gchar      *interface_name,
+                         const gchar      *property_name,
+                         GVariant         *value,
+                         GError          **error,
+                         gpointer          user_data)
+{
+  g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+               "No property %s found in interface %s.",
+	       property_name, 
+	       interface_name);
+  // false signals failure.
+  return FALSE; 
+}// pdb_handle_set_property
 
 /**
  * What to do when the bus is acquired.
@@ -267,11 +497,23 @@ on_bus_acquired (GDBusConnection *connection,
                  const gchar     *name,
                  gpointer         user_data)
 {
-  registration_id = 
+  pdb_registration_id = 
     g_dbus_connection_register_object (connection,
                                        GIMP_DBUS_APPLICATION_OBJECT,
-                                       finalnode->interfaces[0],
-                                       &interface_vtable,
+                                       pdbnode->interfaces[0],
+                                       &pdb_interface_vtable,
+                                       NULL,  /* user_data */
+                                       NULL,  /* user_data_free_func */
+                                       NULL); /* GERROR */
+   
+  alt_introspection_data = 
+    g_dbus_node_info_new_for_xml (alt_introspection_xml, NULL);
+
+  alt_registration_id = 
+    g_dbus_connection_register_object (connection,
+                                       GIMP_DBUS_APPLICATION_OBJECT,
+                                       alt_introspection_data->interfaces[0],
+                                       &alt_interface_vtable,
                                        NULL,  /* user_data */
                                        NULL,  /* user_data_free_func */
                                        NULL); /* GERROR */
@@ -925,30 +1167,21 @@ methodmaker (struct gimpnames *nms)
 
 }//methodmaker
 
-int
-gimp_gbus_handle_rgb_red (GDBusMethodInvocation *invocation,
-			  GVariant *parameters)
-{
-  // Check that we have one parameter and that it's an integer.
-  // Grab the integer
-  // And extract the red component
-} // gimp_gbus_handle_rgb_red
-
 
-// +------------------+------------------------------------------------
-// | Primary Handlers |
-// +------------------+
+// +------------------------------+------------------------------------
+// | Primary Method Call Handlers |
+// +------------------------------+
 
 /**
  * What to do when we get a method call.
  */
 int
-gimp_dbus_handle_method_call (GDBusConnection       *connection,
-                              const gchar           *method_name,
-                              GVariant              *parameters,
-                              GDBusMethodInvocation *invocation)
+gimp_dbus_handle_pdb_method_call (GDBusConnection       *connection,
+                                  const gchar           *method_name,
+                                  GVariant              *parameters,
+                                  GDBusMethodInvocation *invocation)
 {
-  LOG ("gimp_dbus_handle_method_call (%p, %s, %p, %p)",
+  LOG ("gimp_dbus_handle_pdb_method_call (%p, %s, %p, %p)",
        connection, method_name, parameters, invocation);
 
   // Information we extract about the procedure.
@@ -968,11 +1201,6 @@ gimp_dbus_handle_method_call (GDBusConnection       *connection,
   GimpParam       *values = NULL;    // The return values from the call.
   gint             nvalues;          // Number of return values.
   GVariant        *result;
-
-  /*
-  if (strcmp (method_name, "_rgb_red"))
-    return gimp_dbus_handle_rgb_red (invocation, parameters);
-  */
 
   // Normal case; PDB functions
   proc_name = strrep (g_strdup (method_name), '_', '-');
@@ -1139,7 +1367,7 @@ run (const gchar      *name,
   g_type_init ();
 
   LOG ("About to make node.");
-  finalnode = g_dbus_node_info_new (NULL, interfaces, NULL, NULL);
+  pdbnode = g_dbus_node_info_new (NULL, interfaces, NULL, NULL);
   LOG ("Made node.");
 
   LOG ("About to own name");
@@ -1159,7 +1387,7 @@ run (const gchar      *name,
 
   // We've escaped the loop.  Time to clean up.
   g_bus_unown_name (owner_id);
-  g_dbus_node_info_unref (finalnode);
+  g_dbus_node_info_unref (pdbnode);
  
   // update all the changes we have made to the user interface 
   gimp_displays_flush(); 
