@@ -109,25 +109,22 @@ struct gimpnames {
   gint nprocs;
 };
 
-
-// +---------+--------------------------------------------------------
-// | Globals |
-// +---------+
+/**
+ * A simple dbus message handler.
+ */
+typedef void (*SimpleMessageHandler)(const gchar *method_name,
+                                     GDBusMethodInvocation *invocation,
+                                     GVariant *parameters);
 
 /**
- * The XML to describe the additional services that we provide.
+ * An entry in a table of message handlers.  We terminate the table
+ * with an entry whose name is NULL.
  */
-static const gchar alt_introspection_xml[] = 
-  "<node>"
-  "  <interface name='" GIMP_DBUS_INTERFACE_ADDITIONAL "'>"
-  "    <method name='ggimp_rgb_red'>"
-  "      <arg type='i' name='color' direction='in'/>"
-  "      <arg type='i' name='red' direction='out'/>"
-  "    </method>"
-  "  </interface>"
-  "</node>";
-
-static const GDBusNodeInfo *alt_introspection_data = NULL;
+typedef struct HandlerEntry
+  {
+    char *name;
+    SimpleMessageHandler handler;
+  } HandlerEntry;
 
 
 // +-----------------+------------------------------------------------
@@ -238,9 +235,27 @@ g_dbus_arg_new (gchar                *name,
                 GDBusAnnotationInfo **annotations);
 
 
-// +---------+---------------------------------------------------------
+// +---------+--------------------------------------------------------
 // | Globals |
 // +---------+
+
+/**
+ * The XML to describe the additional services that we provide.
+ */
+static const gchar alt_introspection_xml[] = 
+  "<node>"
+  "  <interface name='" GIMP_DBUS_INTERFACE_ADDITIONAL "'>"
+  "    <method name='ggimp_rgb_red'>"
+  "      <arg type='i' name='color' direction='in'/>"
+  "      <arg type='i' name='red' direction='out'/>"
+  "    </method>"
+  "    <method name='ggimp_hello'>"
+  "      <arg type='s' name='result' direction='out'/>"
+  "    </method>"
+  "  </interface>"
+  "</node>";
+
+static const GDBusNodeInfo *alt_introspection_data = NULL;
 
 /**
  * The GDBusNodeInfo on the PDB to be published to the dbus.
@@ -355,8 +370,9 @@ gimp_dbus_report_invalid_paramcount (GDBusMethodInvocation *invocation,
 // +---------------------------------+
 
 void
-gimp_dbus_handle_rgb_red (GDBusMethodInvocation *invocation,
-			  GVariant *parameters)
+ggimp_dbus_handle_rgb_red (const gchar *method_name,
+                           GDBusMethodInvocation *invocation,
+			   GVariant *parameters)
 {
   // Grab the parameter
   GVariant *param = g_variant_get_child_value (parameters, 0);
@@ -369,6 +385,27 @@ gimp_dbus_handle_rgb_red (GDBusMethodInvocation *invocation,
   // And return it
   g_dbus_method_invocation_return_value (invocation, result);
 } // gimp_gbus_handle_rgb_red
+
+void
+ggimp_dbus_handle_hello (const gchar *method_name,
+                         GDBusMethodInvocation *invocation,
+                         GVariant *parameters)
+{
+  GVariant *result = g_variant_new ("(s)", "world");
+  g_dbus_method_invocation_return_value (invocation, result);
+} // ggimp_dbus_handle_hello
+
+void
+ggimp_dbus_handle_default (const gchar *method_name,
+                           GDBusMethodInvocation *invocation,
+                           GVariant *parameters)
+{
+  g_dbus_method_invocation_return_error (invocation,
+                                         G_IO_ERROR,
+                                         G_IO_ERROR_INVALID_ARGUMENT,
+                                         "GGimp: Invalid method: '%s'",
+                                         method_name);
+} // ggimp_dbus_handle_default
 
 
 // +------------------------+------------------------------------------
@@ -385,20 +422,26 @@ alt_handle_method_call (GDBusConnection       *connection,
                         GDBusMethodInvocation *invocation,
                         gpointer               user_data)
 {
-  // Case: ggimp_rgb_red
-  if (g_strcmp0 (method_name, "ggimp_rgb_red") == 0)
+  static HandlerEntry alt_handlers[] =
     {
-      gimp_dbus_handle_rgb_red (invocation, parameters);
-      return;
-    } // _rgb_red
-  else
+      { "ggimp_rgb_red", ggimp_dbus_handle_rgb_red },
+      { "ggimp_hello", ggimp_dbus_handle_hello },
+      { NULL, ggimp_dbus_handle_default }
+    };
+
+  int i;
+  // Loop through the list of handlers, looking for one that matches.
+  for (i = 0; alt_handlers[i].name != NULL; i++)
     {
-      g_dbus_method_invocation_return_error (invocation,
-                                             G_IO_ERROR,
-                                             G_IO_ERROR_INVALID_ARGUMENT,
-                                             "GimpPlus: Invalid method: '%s'",
-                                             method_name);
-    } // default
+      if (g_strcmp0 (method_name, alt_handlers[i].name) == 0)
+        {
+          (*(alt_handlers[i].handler)) (method_name, invocation, parameters);
+          return;
+        } // if the name matches
+    } // for each handler
+
+  // If we've gotten this far, nothing has matched.  Give up.
+  ggimp_dbus_handle_default (method_name, invocation, parameters);
 } // alt_handle_method_call
 
 static GVariant *
