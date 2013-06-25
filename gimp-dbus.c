@@ -45,6 +45,11 @@
 // +-----------+
 
 /**
+ * The "about" message.
+ */
+#define GIMP_DBUS_ABOUT "Glimmer Labs' Gimp D-Bus plugin version 0.0.1"
+
+/**
  * The service name that we use for gimp-dbus.
  */
 #define GIMP_DBUS_SERVICE "edu.grinnell.cs.glimmer.GimpDBus"
@@ -249,7 +254,7 @@ static const gchar alt_introspection_xml[] =
   "      <arg type='i' name='color' direction='in'/>"
   "      <arg type='i' name='red' direction='out'/>"
   "    </method>"
-  "    <method name='ggimp_hello'>"
+  "    <method name='ggimp_about'>"
   "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
   "  </interface>"
@@ -387,13 +392,13 @@ ggimp_dbus_handle_rgb_red (const gchar *method_name,
 } // gimp_gbus_handle_rgb_red
 
 void
-ggimp_dbus_handle_hello (const gchar *method_name,
+ggimp_dbus_handle_about (const gchar *method_name,
                          GDBusMethodInvocation *invocation,
                          GVariant *parameters)
 {
-  GVariant *result = g_variant_new ("(s)", "world");
+  GVariant *result = g_variant_new ("(s)", GIMP_DBUS_ABOUT);
   g_dbus_method_invocation_return_value (invocation, result);
-} // ggimp_dbus_handle_hello
+} // ggimp_dbus_handle_about
 
 void
 ggimp_dbus_handle_default (const gchar *method_name,
@@ -424,8 +429,8 @@ alt_handle_method_call (GDBusConnection       *connection,
 {
   static HandlerEntry alt_handlers[] =
     {
-      { "ggimp_rgb_red", ggimp_dbus_handle_rgb_red },
-      { "ggimp_hello", ggimp_dbus_handle_hello },
+      { "ggimp_about",          ggimp_dbus_handle_about },
+      { "ggimp_rgb_red",        ggimp_dbus_handle_rgb_red },
       { NULL, ggimp_dbus_handle_default }
     };
 
