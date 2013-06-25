@@ -8,6 +8,19 @@
 CFLAGS = -g -Wall -DDEBUG
 
 
+# +----------+--------------------------------------------------------
+# | Commands |
+# +----------+
+
+# Instructions for building a plugin.  Note that gimptool-2.0 only
+# takes CFLAGS and LDFLAGS from the environment, so we need to put
+# them into the environment.
+BUILD_PLUGIN = \
+        export CFLAGS="$(CFLAGS)"; \
+        export LDFLAGS="$(LDFLAGS)"; \
+        gimptool-2.0 --build
+
+
 # +-------+-----------------------------------------------------------
 # | Files |
 # +-------+
@@ -19,7 +32,7 @@ PLUGINS = gimp-dbus
 # | Standard Targets |
 # +------------------+
 
-default: $(PLUGINS)
+default: install-local
 
 install-local: $(PLUGINS)
 	gimptool-2.0 --install-bin $(PLUGINS)
@@ -38,4 +51,4 @@ distclean: clean
 # +-----------------+
 
 gimp-dbus: gimp-dbus.c
-	gimptool-2.0 --build $^
+	$(BUILD_PLUGIN) $^
