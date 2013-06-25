@@ -149,11 +149,11 @@ static void query (void);
 /**
  * GIMP plugin run.
  */
-static void run   (const gchar      *name,
-                   gint              nparams,
-                   const GimpParam  *param,
-                   gint             *nreturn_vals,
-                   GimpParam       **return_vals);
+static void run (const gchar      *name,
+                 gint              nparams,
+                 const GimpParam  *param,
+                 gint             *nreturn_vals,
+                 GimpParam       **return_vals);
 
 /**
  * DBus method call handler for PDB methods.
