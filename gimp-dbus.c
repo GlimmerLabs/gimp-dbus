@@ -38,6 +38,7 @@
 #include <stdio.h>      
 #include <stdarg.h>
 #include <string.h>
+#include <unistd.h>
 
 
 // +-----------+-------------------------------------------------------
@@ -47,7 +48,7 @@
 /**
  * The "about" message.
  */
-#define GIMP_DBUS_ABOUT "Glimmer Labs' Gimp D-Bus plugin version 0.0.1"
+#define GIMP_DBUS_ABOUT "Glimmer Labs' Gimp D-Bus plugin version 0.0.3"
 
 /**
  * The service name that we use for gimp-dbus.
@@ -250,12 +251,14 @@ g_dbus_arg_new (gchar                *name,
 static const gchar alt_introspection_xml[] = 
   "<node>"
   "  <interface name='" GIMP_DBUS_INTERFACE_ADDITIONAL "'>"
+  "    <method name='ggimp_about'>"
+  "      <arg type='s' name='result' direction='out'/>"
+  "    </method>"
+  "    <method name='ggimp_quit'>"
+  "    </method>"
   "    <method name='ggimp_rgb_red'>"
   "      <arg type='i' name='color' direction='in'/>"
   "      <arg type='i' name='red' direction='out'/>"
-  "    </method>"
-  "    <method name='ggimp_about'>"
-  "      <arg type='s' name='result' direction='out'/>"
   "    </method>"
   "  </interface>"
   "</node>";
@@ -296,6 +299,11 @@ static const GDBusInterfaceVTable alt_interface_vtable =
     alt_handle_get_property,
     alt_handle_set_property
   };
+
+/**
+ * The event loop.
+ */
+GMainLoop *loop = NULL;
 
 
 // +----------------------------+--------------------------------------
@@ -375,23 +383,6 @@ gimp_dbus_report_invalid_paramcount (GDBusMethodInvocation *invocation,
 // +---------------------------------+
 
 void
-ggimp_dbus_handle_rgb_red (const gchar *method_name,
-                           GDBusMethodInvocation *invocation,
-			   GVariant *parameters)
-{
-  // Grab the parameter
-  GVariant *param = g_variant_get_child_value (parameters, 0);
-  // Grab the integer
-  int color = g_variant_get_int32 (param);
-  // Extract the red component
-  int red = color >> 16;
-  // Convert it back to a GVariant
-  GVariant *result = g_variant_new ("(i)", red);
-  // And return it
-  g_dbus_method_invocation_return_value (invocation, result);
-} // gimp_gbus_handle_rgb_red
-
-void
 ggimp_dbus_handle_about (const gchar *method_name,
                          GDBusMethodInvocation *invocation,
                          GVariant *parameters)
@@ -412,6 +403,32 @@ ggimp_dbus_handle_default (const gchar *method_name,
                                          method_name);
 } // ggimp_dbus_handle_default
 
+void
+ggimp_dbus_handle_quit (const gchar *method_name,
+                        GDBusMethodInvocation *invocation,
+			GVariant *parameters)
+{
+  g_dbus_method_invocation_return_value (invocation, g_variant_new ("()"));
+  g_main_loop_quit (loop);
+} // ggimp_dbus_handle_quit
+
+void
+ggimp_dbus_handle_rgb_red (const gchar *method_name,
+                           GDBusMethodInvocation *invocation,
+			   GVariant *parameters)
+{
+  // Grab the parameter
+  GVariant *param = g_variant_get_child_value (parameters, 0);
+  // Grab the integer
+  int color = g_variant_get_int32 (param);
+  // Extract the red component
+  int red = color >> 16;
+  // Convert it back to a GVariant
+  GVariant *result = g_variant_new ("(i)", red);
+  // And return it
+  g_dbus_method_invocation_return_value (invocation, result);
+} // gimp_gbus_handle_rgb_red
+
 
 // +------------------------+------------------------------------------
 // | Standard DBus Handlers |
@@ -429,9 +446,10 @@ alt_handle_method_call (GDBusConnection       *connection,
 {
   static HandlerEntry alt_handlers[] =
     {
-      { "ggimp_about",          ggimp_dbus_handle_about },
-      { "ggimp_rgb_red",        ggimp_dbus_handle_rgb_red },
-      { NULL, ggimp_dbus_handle_default }
+      { "ggimp_about",          ggimp_dbus_handle_about         },
+      { "ggimp_quit",           ggimp_dbus_handle_quit          },
+      { "ggimp_rgb_red",        ggimp_dbus_handle_rgb_red       },
+      { NULL,                   ggimp_dbus_handle_default       }
     };
 
   int i;
@@ -589,7 +607,7 @@ on_name_lost (GDBusConnection *connection,
               gpointer         user_data)
 {
   LOG ("Lost name %s", name);
-  exit (1);
+  g_main_loop_quit (loop);
 } // on_name_lost
 
 
@@ -1429,6 +1447,9 @@ run (const gchar      *name,
 
   pid = getpid ();
   LOG ("pid is %d", pid);
+#ifdef DEBUG
+  sleep (1);
+#endif
 
   /* Setting mandatory output values */
   *nreturn_vals = 1;
@@ -1464,9 +1485,6 @@ run (const gchar      *name,
 
   g_dbus_interface_info_generate_xml (interface, 0, xml);
    
-
-  GMainLoop *loop;
-
   g_type_init ();
 
   LOG ("About to make node.");
