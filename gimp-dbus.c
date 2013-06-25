@@ -120,7 +120,7 @@ struct gimpnames {
 static const gchar alt_introspection_xml[] = 
   "<node>"
   "  <interface name='" GIMP_DBUS_INTERFACE_ADDITIONAL "'>"
-  "    <method name='_rgb_red'>"
+  "    <method name='ggimp_rgb_red'>"
   "      <arg type='i' name='color' direction='in'/>"
   "      <arg type='i' name='red' direction='out'/>"
   "    </method>"
@@ -385,8 +385,8 @@ alt_handle_method_call (GDBusConnection       *connection,
                         GDBusMethodInvocation *invocation,
                         gpointer               user_data)
 {
-  // Case: _rgb_red
-  if (g_strcmp0 (method_name, "_rgb_red") == 0)
+  // Case: ggimp_rgb_red
+  if (g_strcmp0 (method_name, "ggimp_rgb_red") == 0)
     {
       gimp_dbus_handle_rgb_red (invocation, parameters);
       return;
@@ -1245,7 +1245,62 @@ gimp_dbus_handle_pdb_method_call (GDBusConnection       *connection,
   values = gimp_run_procedure2 (proc_name, &nvalues, nparams, actuals);
   LOG ("Ran %s", proc_name);
 
-  // Check to make sure that the call succeeded.  TODO!
+  // Check to make sure that the call succeeded.  
+  if (values == NULL)
+    {
+      LOG ("Call to %s failed", proc_name);
+       g_dbus_method_invocation_return_error (invocation,
+                                             G_IO_ERROR,
+                                             G_IO_ERROR_INVALID_ARGUMENT,
+                                             "call to %s failed",
+                                             proc_name);
+       return FALSE;
+    } // If call to procedure2 fails
+
+#ifdef ADDSOMETHINGLIKETHIS
+  // This is Sam's old error-checking code.
+  // You'll need to change scheme_signal_error to appropriate calls
+  // to g_dbus_invocation_return_error
+  if (values[0].data.d_status != GIMP_PDB_SUCCESS)
+    {
+      static gchar procname[64];
+      int status = values[0].data.d_status;
+      snprintf (procname, 64, "%s", proc_name);
+
+      /*
+      CLEANUP_PROC_INFO ();
+      gimp_destroy_params (values, nvalues);
+       */
+      switch (status)
+        {
+          case GIMP_PDB_EXECUTION_ERROR:
+            LOG ("giving up (failed to execute)");
+            scheme_signal_error ("%s: failed to execute",
+                                 procname);
+            return scheme_void;
+          case GIMP_PDB_CALLING_ERROR:
+            LOG ("giving up (invalid inputs)");
+            scheme_signal_error ("%s: exited with invalid inputs",
+                                 procname);
+            return scheme_void;
+          case GIMP_PDB_PASS_THROUGH:
+            LOG ("giving up (pass-through error)");
+            scheme_signal_error ("%s: exited with pass-through error",
+                                 procname);
+            return scheme_void;
+          case GIMP_PDB_CANCEL:
+            LOG ("giving up (cancelled)");
+            scheme_signal_error ("%s: cancelled",
+                                 procname);
+            return scheme_void;
+          default:
+            LOG ("giving up (miscellaneous error)");
+            scheme_signal_error ("%s: exited with status %d",
+                                 procname, status);
+            return scheme_void;
+        } // switch
+    } // if the call did not succeed.
+#endif
 
   // Convert the values back to a GVariant
   result = gimp_dbus_gimp_array_to_g_variant (values+1, nvalues-1);
