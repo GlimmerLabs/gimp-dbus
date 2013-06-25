@@ -48,7 +48,7 @@
 /**
  * The "about" message.
  */
-#define GIMP_DBUS_ABOUT "Glimmer Labs' Gimp D-Bus plugin version 0.0.3"
+#define GIMP_DBUS_ABOUT "Glimmer Labs' Gimp D-Bus plugin version 0.0.4"
 
 /**
  * The service name that we use for gimp-dbus.
@@ -1315,58 +1315,42 @@ gimp_dbus_handle_pdb_method_call (GDBusConnection       *connection,
   if (values == NULL)
     {
       LOG ("Call to %s failed", proc_name);
-       g_dbus_method_invocation_return_error (invocation,
+      g_dbus_method_invocation_return_error (invocation,
                                              G_IO_ERROR,
                                              G_IO_ERROR_INVALID_ARGUMENT,
-                                             "call to %s failed",
+                                             "call to %s failed "
+                                             "for unknown reason",
                                              proc_name);
        return FALSE;
     } // If call to procedure2 fails
 
-#ifdef ADDSOMETHINGLIKETHIS
-  // This is Sam's old error-checking code.
-  // You'll need to change scheme_signal_error to appropriate calls
-  // to g_dbus_invocation_return_error
   if (values[0].data.d_status != GIMP_PDB_SUCCESS)
     {
-      static gchar procname[64];
       int status = values[0].data.d_status;
-      snprintf (procname, 64, "%s", proc_name);
-
-      /*
-      CLEANUP_PROC_INFO ();
-      gimp_destroy_params (values, nvalues);
-       */
+      char *reason = "for an unknown reason";
       switch (status)
         {
           case GIMP_PDB_EXECUTION_ERROR:
-            LOG ("giving up (failed to execute)");
-            scheme_signal_error ("%s: failed to execute",
-                                 procname);
-            return scheme_void;
+            reason = "with an execution error";
+            break;
           case GIMP_PDB_CALLING_ERROR:
-            LOG ("giving up (invalid inputs)");
-            scheme_signal_error ("%s: exited with invalid inputs",
-                                 procname);
-            return scheme_void;
+            reason = "with invalid inputs";
+            break;
           case GIMP_PDB_PASS_THROUGH:
-            LOG ("giving up (pass-through error)");
-            scheme_signal_error ("%s: exited with pass-through error",
-                                 procname);
-            return scheme_void;
+            reason = "with a pass-through error";
+            break;
           case GIMP_PDB_CANCEL:
-            LOG ("giving up (cancelled)");
-            scheme_signal_error ("%s: cancelled",
-                                 procname);
-            return scheme_void;
-          default:
-            LOG ("giving up (miscellaneous error)");
-            scheme_signal_error ("%s: exited with status %d",
-                                 procname, status);
-            return scheme_void;
-        } // switch
-    } // if the call did not succeed.
-#endif
+            reason = "because it was canceled";
+            break;
+        } // switch (status)
+      g_dbus_method_invocation_return_error (invocation,
+                                             G_IO_ERROR,
+                                             G_IO_ERROR_INVALID_ARGUMENT,
+                                             "call to %s failed %s",
+                                             proc_name,
+                                             reason);
+      return FALSE;
+    } // if gimp reports an error
 
   // Convert the values back to a GVariant
   result = gimp_dbus_gimp_array_to_g_variant (values+1, nvalues-1);
