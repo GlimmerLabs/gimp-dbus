@@ -126,11 +126,12 @@ typedef void (*SimpleMessageHandler)(const gchar *method_name,
  * An entry in a table of message handlers.  We terminate the table
  * with an entry whose name is NULL.
  */
-typedef struct HandlerEntry
+struct HandlerEntry
   {
     char *name;
     SimpleMessageHandler handler;
-  } HandlerEntry;
+  };
+typedef struct HandlerEntry HandlerEntry;
 
 
 // +-----------------+------------------------------------------------
