@@ -73,7 +73,7 @@
 /**
  * Where we put this service in the menu.
  */
-#define GIMP_DBUS_MENU "<Toolbox>/Xtns/MediaScript/DBus Server"
+#define GIMP_DBUS_MENU "<Toolbox>/MediaScript/"
 
 
 // +--------+----------------------------------------------------------
@@ -1378,46 +1378,41 @@ MAIN()
 static void
 query (void)
 {
-  // saving in constant memory the data that I expect from Gimp
-  static GimpParamDef args[] =
+  // Install the server
+  static GimpParamDef server_args[] =
     {
-      {
-	// determines the run-mode whether it is interactive or non-interactive
-	GIMP_PDB_INT32, 
-	"run-mode",
-	"RM"
-      },
-
-      {
-	// Input image
-	GIMP_PDB_IMAGE,
-	"image",
-	"Input image"
-      },
-
-      {
-	// Input drawable
-	GIMP_PDB_DRAWABLE,
-	"drawable",
-	"Input drawable"
-      }
+      { GIMP_PDB_INT32, "run-mode", "Run mode" }
     };
 
-
-  gimp_install_procedure (
-			  "GimpDbusServer",
+  gimp_install_procedure ("GimpDbusServer",
 			  "Node Info Test",
 			  "Publishes Node on the DBUS",
-			  "Samuel A. Rebelsky and a host of students.",
+			  "Samuel A. Rebelsky and a host of his students.",
 			  "Copyright (c) 2012-13 Samuel A. Rebelsky "
-                           "and some students",
+                           "and a host of his students",
 			  "2012-13",
-                          GIMP_DBUS_MENU,
+                          GIMP_DBUS_MENU "DBus Server",
 			  NULL, 
 			  GIMP_PLUGIN,
-			  G_N_ELEMENTS (args), 0,
-			  args, NULL);
+			  G_N_ELEMENTS (server_args), 0,
+			  server_args, NULL);
 } // query
+
+static void
+run_default (const gchar *name,
+             gint              nparams,
+             const GimpParam  *param,
+             gint             *nreturn_vals,
+             GimpParam       **return_vals)
+{
+  static GimpParam  values[1];
+  /* Setting mandatory output values */
+  *nreturn_vals = 1;
+  *return_vals  = values;
+
+  values[0].type = GIMP_PDB_STATUS;
+  values[0].data.d_status = GIMP_PDB_CALLING_ERROR;
+} // run_default
 
 static void
 run (const gchar      *name,
@@ -1428,11 +1423,10 @@ run (const gchar      *name,
 {
   static GimpParam  values[1];
   GimpPDBStatusType status = GIMP_PDB_SUCCESS;
-  int               pid;    // Process ID; for debugging
 
-  pid = getpid ();
-  LOG ("pid is %d", pid);
+  LOG ("running '%s'", name);
 #ifdef DEBUG
+  LOG ("pid is %d", getpid ());
   sleep (1);
 #endif
 
