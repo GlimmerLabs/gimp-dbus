@@ -48,7 +48,7 @@
 /**
  * The "about" message.
  */
-#define GIMP_DBUS_ABOUT "Glimmer Labs' Gimp D-Bus plugin version 0.0.5"
+#define GIMP_DBUS_ABOUT "Glimmer Labs' Gimp D-Bus plugin version 0.0.6"
 
 /**
  * The service name that we use for gimp-dbus.
@@ -900,7 +900,7 @@ GVariant *
 gimp_dbus_gimp_param_to_g_variant (GimpParam value, int *asize)
 {
   GVariantBuilder abuilder;
-  int arrcounter = 0;
+  int index = 0;             // Index into the array.
   int icolor;                // A color represented as an integer
   guchar r, g, b;            // Components of the color.
 
@@ -940,36 +940,33 @@ gimp_dbus_gimp_param_to_g_variant (GimpParam value, int *asize)
       
     case GIMP_PDB_STRINGARRAY:
       g_variant_builder_init (&abuilder, G_VARIANT_TYPE_STRING_ARRAY);
-      for(arrcounter = 0; arrcounter< *asize; arrcounter++)
+      for (index = 0; index< *asize; index++)
 	{
 	  g_variant_builder_add_value 
 	    (&abuilder, g_variant_new("s", 
-				      value.data.d_stringarray[arrcounter]));
-
-	  fprintf(stderr, "%s",value.data.d_stringarray[arrcounter] );
-	  
-	}
+				      value.data.d_stringarray[index]));
+	} // for 
       return g_variant_builder_end(&abuilder);
 
     case GIMP_PDB_INT32ARRAY:    
       g_variant_builder_init (&abuilder, ((const GVariantType *) "ai"));
          
-      for(arrcounter = 0; arrcounter< *asize; arrcounter++)
+      for (index = 0; index< *asize; index++)
 	{
 	  g_variant_builder_add_value 
 	    (&abuilder, g_variant_new("i",
-				      value.data.d_int32array[arrcounter]));
+				      value.data.d_int32array[index]));
 	 
 	}
       return g_variant_builder_end(&abuilder);
 
     case GIMP_PDB_INT16ARRAY:
       g_variant_builder_init (&abuilder, G_VARIANT_TYPE_TUPLE);
-      for(arrcounter = 0; arrcounter< *asize; arrcounter++)
+      for(index = 0; index< *asize; index++)
 	{
 	  g_variant_builder_add_value 
 	    (&abuilder, g_variant_new("n", 
-				      value.data.d_int16array[arrcounter]));
+				      value.data.d_int16array[index]));
 	 
 	}
       return g_variant_builder_end(&abuilder);
@@ -977,17 +974,17 @@ gimp_dbus_gimp_param_to_g_variant (GimpParam value, int *asize)
       //INT8ARRAY
     case GIMP_PDB_INT8ARRAY:
       //use uchar to get each bit from array
-      arrcounter = 0;
+      index = 0;
       
 
       g_variant_builder_init (&abuilder, ((const GVariantType *) "ai"));
 
-      for(arrcounter = 0; arrcounter< *asize; arrcounter++)
+      for(index = 0; index< *asize; index++)
 
 	{
 	  g_variant_builder_add_value 
 	    (&abuilder, g_variant_new("i", 
-				      value.data.d_int8array[arrcounter]));
+				      value.data.d_int8array[index]));
 	}
    
       return g_variant_builder_end(&abuilder);
@@ -995,11 +992,11 @@ gimp_dbus_gimp_param_to_g_variant (GimpParam value, int *asize)
       //FLOATARRAY
     case GIMP_PDB_FLOATARRAY:
       g_variant_builder_init (&abuilder, G_VARIANT_TYPE_TUPLE);
-      for (arrcounter = 0; arrcounter< *asize; arrcounter++)
+      for (index = 0; index< *asize; index++)
 	{
 	  g_variant_builder_add_value 
 	    (&abuilder, g_variant_new("d", 
-				      value.data.d_floatarray[arrcounter]));
+				      value.data.d_floatarray[index]));
 	 
 	}
       return g_variant_builder_end(&abuilder);
@@ -1369,7 +1366,6 @@ gimp_dbus_handle_pdb_method_call (GDBusConnection       *connection,
 
   // Return via DBus
   g_dbus_method_invocation_return_value (invocation, result);
-  LOG("actually, it's this one");
 
   // Cleanup: TODO
   // g_variant_unref (result);
