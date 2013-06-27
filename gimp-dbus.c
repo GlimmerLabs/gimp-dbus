@@ -48,7 +48,7 @@
 /**
  * The "about" message.
  */
-#define GIMP_DBUS_ABOUT "Glimmer Labs' Gimp D-Bus plugin version 0.0.4"
+#define GIMP_DBUS_ABOUT "Glimmer Labs' Gimp D-Bus plugin version 0.0.5"
 
 /**
  * The service name that we use for gimp-dbus.
@@ -132,6 +132,17 @@ struct HandlerEntry
     SimpleMessageHandler handler;
   };
 typedef struct HandlerEntry HandlerEntry;
+
+/**
+ * An entry in a table of GIMP run handlers.  We terminate the table
+ * with an entry whose name is NULL.
+ */
+struct RunTableEntry
+  {
+    char *name;
+    GimpRunProc proc;
+  };
+typedef struct RunTableEntry RunTableEntry;
 
 
 // +-----------------+------------------------------------------------
@@ -1378,24 +1389,61 @@ MAIN()
 static void
 query (void)
 {
-  // Install the server
+#ifdef EXTENSION
+  // Install the default server.  Since this is an extension, it should
+  // start immediately.
+  gimp_install_procedure ("GimpDBusServer",
+			  "A Gimp D-Bus Server",
+			  "Publishes the PDB and some other procedures on D-Bus",
+			  "Samuel A. Rebelsky and a host of his students.",
+			  "Copyright (c) 2012-13 Samuel A. Rebelsky",
+			  "2012-13",
+                          GIMP_DBUS_MENU "DBus Server",
+			  NULL, 
+			  GIMP_EXTENSION,
+                          0, 0,
+			  NULL, NULL);
+#endif
+
+  // Install support for restarting the server.
   static GimpParamDef server_args[] =
     {
       { GIMP_PDB_INT32, "run-mode", "Run mode" }
     };
-
-  gimp_install_procedure ("GimpDbusServer",
-			  "Node Info Test",
-			  "Publishes Node on the DBUS",
+  gimp_install_procedure ("GimpDBusServer",
+			  "A Gimp D-Bus Server",
+			  "Publishes the PDB and some other procedures on D-Bus",
 			  "Samuel A. Rebelsky and a host of his students.",
-			  "Copyright (c) 2012-13 Samuel A. Rebelsky "
-                           "and a host of his students",
+			  "Copyright (c) 2012-13 Samuel A. Rebelsky",
 			  "2012-13",
                           GIMP_DBUS_MENU "DBus Server",
 			  NULL, 
 			  GIMP_PLUGIN,
 			  G_N_ELEMENTS (server_args), 0,
 			  server_args, NULL);
+
+  // Install a silly procedure (for testing)
+  static GimpParamDef silly_args[] =
+    {
+      { GIMP_PDB_INT32, "run-mode", "Run mode" }
+    };
+  static GimpParamDef silly_return[] =
+    {
+      { GIMP_PDB_STRING, "message", "a message from the server." }
+    };
+  gimp_install_procedure ("silly",
+			  "A silly experiment",
+			  "An experiment with serving multiple functions",
+			  "Samuel A. Rebelsky",
+			  "Copyright (c) 2013 Samuel A. Rebelsky",
+			  "2013",
+                          NULL,
+			  NULL, 
+			  GIMP_PLUGIN,
+			  G_N_ELEMENTS (silly_args), 
+                          G_N_ELEMENTS (silly_return),
+			  silly_args, 
+                          silly_return);
 } // query
 
 static void
@@ -1415,16 +1463,15 @@ run_default (const gchar *name,
 } // run_default
 
 static void
-run (const gchar      *name,
-     gint              nparams,
-     const GimpParam  *param,
-     gint             *nreturn_vals,
-     GimpParam       **return_vals)
+run_server (const gchar      *name,
+            gint              nparams,
+            const GimpParam  *param,
+            gint             *nreturn_vals,
+            GimpParam       **return_vals)
 {
   static GimpParam  values[1];
   GimpPDBStatusType status = GIMP_PDB_SUCCESS;
 
-  LOG ("running '%s'", name);
 #ifdef DEBUG
   LOG ("pid is %d", getpid ());
   sleep (1);
@@ -1493,4 +1540,54 @@ run (const gchar      *name,
   gimp_displays_flush(); 
 
   return;
+} // run_server
+
+static void
+run_silly (const gchar      *name,
+           gint              nparams,
+           const GimpParam  *param,
+           gint             *nreturn_vals,
+           GimpParam       **return_vals)
+{
+  static GimpParam results[2];
+  results[0].type = GIMP_PDB_STATUS;
+  results[0].data.d_status = GIMP_PDB_SUCCESS;
+  results[1].type = GIMP_PDB_STRING;
+  results[1].data.d_string = "hello world";
+
+  *nreturn_vals = 2;
+  *return_vals = results;
+} // run_silly
+
+static void
+run (const gchar      *name,
+     gint              nparams,
+     const GimpParam  *param,
+     gint             *nreturn_vals,
+     GimpParam       **return_vals)
+{
+  LOG ("Running '%s'", name);
+  static RunTableEntry runners[] =
+    {
+      { "GimpDBusServer",       run_server     },
+      { "silly",                run_silly      },
+      { NULL,                   run_default    }
+    };
+
+  int i;
+  // Loop through the list of handlers, looking for one that matches.
+  for (i = 0; runners[i].name != NULL; i++)
+    {
+      if (g_strcmp0 (name, runners[i].name) == 0)
+        {
+          (*(runners[i].proc)) (name, nparams, param, 
+                                nreturn_vals, return_vals);
+          return;
+        } // if the name matches
+    } // for each runner
+
+  // If we've made it through all the handlers, just use the deafult.
+  LOG ("Could not find '%s'", name);
+  run_default (name, nparams, param, nreturn_vals, return_vals);
 } // run
+

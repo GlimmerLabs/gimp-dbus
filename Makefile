@@ -7,7 +7,6 @@
 
 CFLAGS = -g -Wall -DDEBUG
 
-
 # +----------+--------------------------------------------------------
 # | Commands |
 # +----------+
@@ -25,7 +24,12 @@ BUILD_PLUGIN = \
 # | Files |
 # +-------+
 
-PLUGINS = gimp-dbus
+PLUGINS = gimp-dbus ggimp-irgb-new ggimp-irgb-components
+
+INSTALL = $(addsuffix .install,$(PLUGINS))
+LOCAL = $(addsuffix .local,$(PLUGINS))
+
+LIBRARIES=libtilestream.a
 
 
 # +------------------+------------------------------------------------
@@ -34,21 +38,35 @@ PLUGINS = gimp-dbus
 
 default: install-local
 
-install-local: $(PLUGINS)
-	gimptool-2.0 --install-bin $(PLUGINS)
+install-local: $(PLUGINS) $(LOCAL)
 
-install: gimp-dbus
-	gimptool-2.0 --install-admin-bin $(PLUGINS)
+install: $(INSTALL)
 
 clean:
-	rm -f $(PLUGINS)
+	rm -f $(PLUGINS) $(LIBRARIES)
 
 distclean: clean
 
 
-# +-----------------+-------------------------------------------------
-# | Primary Targets |
-# +-----------------+
+# +------------------+------------------------------------------------
+# | Building Plugins |
+# +------------------+
 
-gimp-dbus: gimp-dbus.c
+%: %.c
 	$(BUILD_PLUGIN) $^
+
+# +--------------------+----------------------------------------------
+# | Installing Plugins |
+# +--------------------+
+
+%.install: %
+	gimptool-2.0 --install-admin-bin $<
+
+%.local: %
+	gimptool-2.0 --install-bin $<
+
+%.uninstall: %
+	gimptool-2.0 --uninstall-admin-bin $<
+	gimptool-2.0 --uninstall-bin $<
+	rm -f $*.install
+	rm -f $*.local
