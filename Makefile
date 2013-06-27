@@ -27,7 +27,8 @@ BUILD_PLUGIN = \
 PLUGINS = gimp-dbus \
         ggimp-irgb-new \
         ggimp-irgb-components \
-	ggimp-rgb-list
+	ggimp-rgb-list \
+	ggimp-rgb-parse
 
 INSTALL = $(addsuffix .install,$(PLUGINS))
 LOCAL = $(addsuffix .local,$(PLUGINS))
