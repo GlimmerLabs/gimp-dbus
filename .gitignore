@@ -25,3 +25,12 @@ gimp-dbus
 # Installation logs
 *.local
 *.install
+
+# Repo-specific Plugins
+ggimp-irgb-components
+ggimp-irgb-new
+ggimp-rgb-list
+gimp-ts.c
+test-bytes-get
+test-bytes-put
+
