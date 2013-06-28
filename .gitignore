@@ -30,6 +30,7 @@ gimp-dbus
 ggimp-irgb-components
 ggimp-irgb-new
 ggimp-rgb-list
+ggimp-rgb-parse
 gimp-ts.c
 test-bytes-get
 test-bytes-put
