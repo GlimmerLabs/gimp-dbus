@@ -685,7 +685,7 @@ gimp_dbus_pdb_type_to_signature (GimpPDBArgType type)
       result = ((const GVariantType *) "an");
       break;
     case GIMP_PDB_INT8ARRAY:
-      result = ((const GVariantType *) "ai");
+      result = ((const GVariantType *) "ay");
       break;
     case GIMP_PDB_FLOATARRAY:
       result = ((const GVariantType *) "ad");
@@ -710,7 +710,6 @@ gimp_dbus_pdb_type_to_signature (GimpPDBArgType type)
   return result;
 } // gimp_dbus_pdb_param_to_signature
 
-
 /**
  * Convert a GVariant to a GimpParam and make param point to it.
  * Returns success/failure.
@@ -720,20 +719,22 @@ gimp_dbus_g_variant_to_gimp_param (GVariant         *parameter,
                                    GimpParamDef     *paramdef,
                                    GimpParam        *param)
 {
+  gsize size;
   unsigned long nchildren;
   int arraycounter = 0;
   char* tempc;
   gint32 temp32;
+  gint16 temp16;
   gdouble tempd;
   gchar** sarray = NULL;
   gint32* array32 = NULL;
   gint16* array16 = NULL;
-  guint8* array8 = NULL;
   gdouble* arrayd = NULL;
   guchar r, g, b;      //int rgb
   GimpRGB tempRGB; 
 
-  // Make sure that types match
+  // Make sure that types match.  FIX TO HANDLE MULTIPLE REPRESENTATIONS
+  // OF COLORS.
   const gchar *paramtype = 
     (const gchar *) gimp_dbus_pdb_type_to_signature (paramdef->type);
   if (! g_variant_type_equal (paramtype,
@@ -766,8 +767,6 @@ gimp_dbus_g_variant_to_gimp_param (GVariant         *parameter,
    
       return TRUE;
 
-
-      return TRUE;   
     // All of these types are effectively integers.
     case GIMP_PDB_INT32:
     case GIMP_PDB_DISPLAY:
@@ -827,23 +826,20 @@ gimp_dbus_g_variant_to_gimp_param (GVariant         *parameter,
         return FALSE;
       for (arraycounter = 0; arraycounter<nchildren; arraycounter++)
 	{
-	  g_variant_get_child (parameter, arraycounter, "i", &temp32);
-	  array8[arraycounter] = (gint16) temp32;  
+	  g_variant_get_child (parameter, arraycounter, "n", &temp16);
+	  array16[arraycounter] = (gint16) temp16;  
 	}
       param->data.d_int16array = array16;
       LOG ("  parameter '%s' is an array of int16s", paramdef->name);
       return TRUE; 
 
     case GIMP_PDB_INT8ARRAY:
-      nchildren = g_variant_n_children (parameter);
-      array8 = g_try_malloc ((nchildren) * sizeof (guint8));
-      for (arraycounter = 0; arraycounter<nchildren; arraycounter++)
-	{
-	  g_variant_get_child (parameter, arraycounter, "i", &temp32);
-	  array8[arraycounter] = (guint8) temp32;  
-	}
-      param->data.d_int8array = array8;
-      LOG ("  parameter '%s' is an array of int8s", paramdef->name);
+      param->data.d_int8array = 
+        (guint8 *) g_variant_get_fixed_array (parameter,
+                                              &size,
+                                              sizeof (guint8));
+      LOG ("  parameter '%s' is an array of int8s of size %lu", 
+           paramdef->name, size);
       return TRUE; 
 
     case GIMP_PDB_FLOATARRAY:
@@ -962,7 +958,7 @@ gimp_dbus_gimp_param_to_g_variant (GimpParam value, int *asize)
 
     case GIMP_PDB_INT16ARRAY:
       g_variant_builder_init (&abuilder, G_VARIANT_TYPE_TUPLE);
-      for(index = 0; index< *asize; index++)
+      for (index = 0; index< *asize; index++)
 	{
 	  g_variant_builder_add_value 
 	    (&abuilder, g_variant_new("n", 
@@ -975,20 +971,25 @@ gimp_dbus_gimp_param_to_g_variant (GimpParam value, int *asize)
     case GIMP_PDB_INT8ARRAY:
       //use uchar to get each bit from array
       index = 0;
-      
-
+      GVariant *bytes = g_variant_new_fixed_array (G_VARIANT_TYPE_BYTE,
+                                                   value.data.d_int8array,
+                                                   *asize,
+                                                   sizeof (guint8));
+      LOG ("Working with int8arrays, created a something of type %s.",
+           g_variant_get_type_string (bytes));
+      return bytes;
+#ifdef OLD
       g_variant_builder_init (&abuilder, ((const GVariantType *) "ai"));
 
-      for(index = 0; index< *asize; index++)
-
+      for (index = 0; index< *asize; index++)
 	{
-	  g_variant_builder_add_value 
-	    (&abuilder, g_variant_new("i", 
-				      value.data.d_int8array[index]));
-	}
+          guint8 byte = value.data.d_int8array[index];
+	  g_variant_builder_add_value (&abuilder, g_variant_new("i", byte));
+          LOG ("bytes[%d] = %d\n", index, byte);
+	} // for
    
-      return g_variant_builder_end(&abuilder);
-
+      return g_variant_builder_end (&abuilder);
+#endif
       //FLOATARRAY
     case GIMP_PDB_FLOATARRAY:
       g_variant_builder_init (&abuilder, G_VARIANT_TYPE_TUPLE);
