@@ -27,7 +27,9 @@ BUILD_PLUGIN = \
 PLUGINS = gimp-dbus \
         ggimp-irgb-new \
         ggimp-irgb-components \
-	ggimp-rgb-list
+	ggimp-rgb-list \
+        test-bytes-get \
+        test-bytes-put
 
 INSTALL = $(addsuffix .install,$(PLUGINS))
 LOCAL = $(addsuffix .local,$(PLUGINS))
@@ -46,7 +48,7 @@ install-local: $(PLUGINS) $(LOCAL)
 install: $(INSTALL)
 
 clean:
-	rm -f $(PLUGINS) $(LIBRARIES)
+	rm -f $(PLUGINS) $(LIBRARIES) $(LOCAL) $(INSTALL)
 
 distclean: clean
 
@@ -71,5 +73,3 @@ distclean: clean
 %.uninstall: %
 	gimptool-2.0 --uninstall-admin-bin $<
 	gimptool-2.0 --uninstall-bin $<
-	rm -f $*.install
-	rm -f $*.local
