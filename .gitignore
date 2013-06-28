@@ -21,3 +21,7 @@ gimp-dbus
 
 # Temporaries
 *.swp
+
+# Installation logs
+*.local
+*.install
