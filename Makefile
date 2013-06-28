@@ -28,6 +28,7 @@ PLUGINS = gimp-dbus \
         ggimp-irgb-new \
         ggimp-irgb-components \
 	ggimp-rgb-list \
+	ggimp-rgb-parse \
         test-bytes-get \
         test-bytes-put
 
