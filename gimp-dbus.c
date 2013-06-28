@@ -40,6 +40,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "tile-stream.h"
+
 
 // +-----------+-------------------------------------------------------
 // | Constants |
@@ -48,7 +50,7 @@
 /**
  * The "about" message.
  */
-#define GIMP_DBUS_ABOUT "Glimmer Labs' Gimp D-Bus plugin version 0.0.6"
+#define GIMP_DBUS_ABOUT "Glimmer Labs' Gimp D-Bus plugin version 0.0.7"
 
 /**
  * The service name that we use for gimp-dbus.
@@ -272,6 +274,16 @@ static const gchar alt_introspection_xml[] =
   "      <arg type='i' name='color' direction='in'/>"
   "      <arg type='i' name='red' direction='out'/>"
   "    </method>"
+  "    <method name='tile_stream_new'>"
+  "      <arg type='i' name='image' direction='in'/>"
+  "      <arg type='i' name='drawable' direction='in'/>"
+  "      <arg type='i' name='stream' direction='out'/>"
+  "    </method>"
+  "    <method name='tile_stream_get'>"
+  "      <arg type='i' name='stream' direction='in'/>"
+  "      <arg type='i' name='size' direction='out'/>"
+  "      <arg type='ay' name='bytes' direction='out'/>"
+  "    </method>"
   "  </interface>"
   "</node>";
 
@@ -434,12 +446,85 @@ ggimp_dbus_handle_rgb_red (const gchar *method_name,
   // Grab the integer
   int color = g_variant_get_int32 (param);
   // Extract the red component
-  int red = color >> 16;
+  int red = (color >> 16) & 255;
   // Convert it back to a GVariant
   GVariant *result = g_variant_new ("(i)", red);
   // And return it
   g_dbus_method_invocation_return_value (invocation, result);
 } // gimp_gbus_handle_rgb_red
+
+void
+ggimp_dbus_handle_tile_stream_get (const gchar *method_name,
+                                   GDBusMethodInvocation *invocation,
+			           GVariant *parameters)
+{
+  // Grab the parameters
+  int stream = 
+    g_variant_get_int32 (g_variant_get_child_value (parameters, 0));
+  // Validate
+  if (! tile_stream_is_valid (stream))
+    {
+      LOG ("tile-stream-get: Invalid tile stream: %d", stream);
+      g_dbus_method_invocation_return_error (
+        invocation,
+        G_IO_ERROR,
+        G_IO_ERROR_INVALID_ARGUMENT,
+        "could not create stream");
+    } // if tile stream is invalid
+  // Get the next region
+  GimpPixelRgn *rgn = tile_stream_get (stream);
+  if (rgn == NULL)
+    {
+      LOG ("tile-stream-get: Failed to get tile.\n");
+      g_dbus_method_invocation_return_error (
+        invocation,
+        G_IO_ERROR,
+        G_IO_ERROR_INVALID_ARGUMENT,
+        "could not get tile");
+    } // if the region is null
+
+  // Grab the bytes
+  int size = rgn->rowstride * rgn->h;
+  GVariant *bytes = g_variant_new_fixed_array (G_VARIANT_TYPE_BYTE,
+                                               rgn->data,
+                                               size,
+                                               sizeof (guint8));
+  // Build the return value
+  GVariantBuilder builder;
+  g_variant_builder_init (&builder, G_VARIANT_TYPE_TUPLE);
+  g_variant_builder_add_value (&builder, g_variant_new ("i", size));
+  g_variant_builder_add_value (&builder, bytes);
+
+  // And we're done
+  g_dbus_method_invocation_return_value (invocation, 
+                                         g_variant_builder_end (&builder));
+} // ggimp_dbus_handle_tile_stream_get
+
+void
+ggimp_dbus_handle_tile_stream_new (const gchar *method_name,
+                                   GDBusMethodInvocation *invocation,
+			           GVariant *parameters)
+{
+  // Grab the parameters
+  int image = 
+    g_variant_get_int32 (g_variant_get_child_value (parameters, 0));
+  int drawable = 
+    g_variant_get_int32 (g_variant_get_child_value (parameters, 1));
+  // Build the tile stream
+  int stream = drawable_new_tile_stream (image, drawable);
+  if (! tile_stream_is_valid (stream))
+    {
+      g_dbus_method_invocation_return_error (
+        invocation,
+        G_IO_ERROR,
+        G_IO_ERROR_INVALID_ARGUMENT,
+        "could not create stream");
+    } // if tile stream is invalid
+  // Convert it back to a GVariant
+  GVariant *result = g_variant_new ("(i)", stream);
+  // And return it
+  g_dbus_method_invocation_return_value (invocation, result);
+} // ggimp_dbus_handle_tile_stream_new
 
 
 // +------------------------+------------------------------------------
@@ -458,10 +543,12 @@ alt_handle_method_call (GDBusConnection       *connection,
 {
   static HandlerEntry alt_handlers[] =
     {
-      { "ggimp_about",          ggimp_dbus_handle_about         },
-      { "ggimp_quit",           ggimp_dbus_handle_quit          },
-      { "ggimp_rgb_red",        ggimp_dbus_handle_rgb_red       },
-      { NULL,                   ggimp_dbus_handle_default       }
+      { "ggimp_about",          ggimp_dbus_handle_about           },
+      { "ggimp_quit",           ggimp_dbus_handle_quit            },
+      { "ggimp_rgb_red",        ggimp_dbus_handle_rgb_red         },
+      { "tile_stream_get",      ggimp_dbus_handle_tile_stream_get },
+      { "tile_stream_new",      ggimp_dbus_handle_tile_stream_new },
+      { NULL,                   ggimp_dbus_handle_default         }
     };
 
   int i;
@@ -1563,7 +1650,7 @@ run (const gchar      *name,
      gint             *nreturn_vals,
      GimpParam       **return_vals)
 {
-  LOG ("Running '%s'", name);
+  LOG ("Running '%s' in process %d", name, getpid ());
   static RunTableEntry runners[] =
     {
       { "GimpDBusServer",       run_server     },

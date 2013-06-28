@@ -7,6 +7,8 @@
 
 CFLAGS = -g -Wall -DDEBUG
 
+LDFLAGS = -L. -ltilestream
+
 # +----------+--------------------------------------------------------
 # | Commands |
 # +----------+
@@ -35,7 +37,7 @@ PLUGINS = gimp-dbus \
 INSTALL = $(addsuffix .install,$(PLUGINS))
 LOCAL = $(addsuffix .local,$(PLUGINS))
 
-LIBRARIES = 
+LIBRARIES = libtilestream.a
 
 # +------------------+------------------------------------------------
 # | Standard Targets |
@@ -50,6 +52,8 @@ install: $(INSTALL)
 clean:
 	rm -f $(PLUGINS) $(LIBRARIES) $(LOCAL) $(INSTALL)
 
+
+
 distclean: clean
 
 
@@ -57,8 +61,8 @@ distclean: clean
 # | Building Plugins |
 # +------------------+
 
-%: %.c
-	$(BUILD_PLUGIN) $^
+%: %.c $(LIBRARIES)
+	$(BUILD_PLUGIN) $<
 
 # +--------------------+----------------------------------------------
 # | Installing Plugins |
@@ -73,3 +77,14 @@ distclean: clean
 %.uninstall: %
 	gimptool-2.0 --uninstall-admin-bin $<
 	gimptool-2.0 --uninstall-bin $<
+
+# +-----------+-------------------------------------------------------
+# | Libraries |
+# +-----------+
+
+tile-stream.o: tile-stream.c tile-stream.h
+	$(CC) $(CFLAGS) $< -c -o $@ $(shell pkg-config --cflags gimp-2.0)
+
+libtilestream.a: tile-stream.o
+	ar -r $@ $^
+	ranlib $@
