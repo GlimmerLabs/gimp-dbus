@@ -34,8 +34,7 @@ PLUGINS = gimp-dbus \
 INSTALL = $(addsuffix .install,$(PLUGINS))
 LOCAL = $(addsuffix .local,$(PLUGINS))
 
-LIBRARIES=libtilestream.a
-
+LIBRARIES = 
 
 # +------------------+------------------------------------------------
 # | Standard Targets |
