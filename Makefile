@@ -61,7 +61,7 @@ distclean: clean
 # | Building Plugins |
 # +------------------+
 
-%: %.c $(LIBRARIES)
+%: %.c 
 	$(BUILD_PLUGIN) $<
 
 # +--------------------+----------------------------------------------
@@ -77,6 +77,13 @@ distclean: clean
 %.uninstall: %
 	gimptool-2.0 --uninstall-admin-bin $<
 	gimptool-2.0 --uninstall-bin $<
+
+# +--------------------+----------------------------------------------
+# | Other Dependencies |
+# +--------------------+
+
+gimp-dbus: $(LIBRARIES)
+
 
 # +-----------+-------------------------------------------------------
 # | Libraries |
