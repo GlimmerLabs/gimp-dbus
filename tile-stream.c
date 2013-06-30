@@ -58,6 +58,7 @@ struct TileStream
     int top;
     int width;
     int height;
+    int n;
     GimpDrawable *source;
     GimpDrawable *target;
     gpointer iterator;
@@ -93,9 +94,14 @@ static void invert_pixels (GimpPixelRgn *rgn);
  * Copy pixels into a region.
  */
 static int
-copy_pixels (GimpPixelRgn *rgn, guchar *data)
+copy_pixels (GimpPixelRgn *rgn, int size, guchar *data)
 {
-  int size = rgn->h * rgn->rowstride;
+  int expected_size = rgn->h * rgn->rowstride;
+  if (expected_size != size)
+    {
+      fprintf (stderr, "Sizes don't match: %d != %d\n", size, expected_size);
+      return 0;
+    } // if the sizes don't match
   memcpy (rgn->data, data, size);
   return 1;
 } // copy_pixels
@@ -169,6 +175,7 @@ rectangle_new_tile_stream (int image, int drawable,
   stream->top = top;
   stream->width = width;
   stream->height = height;
+  stream->n = 0;
   stream->source = gimp_drawable_get (drawable);
   if (stream->source == NULL)
     {
@@ -196,10 +203,12 @@ rectangle_new_tile_stream (int image, int drawable,
                                                   &(stream->target_region));
 
   // Copy pixels over in case the user doesn't change them
-  copy_pixels (&(stream->target_region), stream->source_region.data);
-
-  // HACK FOR TESTING
-  invert_pixels (&(stream->target_region));
+  if (stream->iterator != NULL)
+    {
+      copy_pixels (&(stream->target_region), 
+                   stream->source_region.rowstride * stream->source_region.h,
+                   stream->source_region.data);
+    } // if the iterator is not null
 
   // And we're done
   streams[id] = stream;
@@ -230,23 +239,33 @@ drawable_new_tile_stream (int image, int drawable)
 gboolean
 tile_stream_advance (int id)
 {
-  // Sanity checks
+  // Sanity check
   if (! tile_stream_is_valid (id))
     return 0;
 
+  // Get the stream
+  TileStream *stream = streams[id];
+
   // Advance the iterator.  This has the side effect of changing
   // streams[id]->source_region and streams[id]->target_region.
-  streams[id]->iterator = gimp_pixel_rgns_process (streams[id]->iterator);
+  stream->iterator = gimp_pixel_rgns_process (stream->iterator);
+
+  // Update the number
+  ++(stream->n);
 
   // Copy pixels over in case the user doesn't change them
-  if (streams[id]->iterator != NULL)
+  if (stream->iterator != NULL)
     {
-      copy_pixels (&(streams[id]->target_region),
-                   streams[id]->source_region.data);
+#ifdef DEBUG
+      fprintf (stderr, "Copying original from tile %d.\n", stream->n);
+#endif
+      copy_pixels (&(stream->target_region),
+                   stream->source_region.rowstride * stream->source_region.h,
+                   stream->source_region.data);
     } // if we're not at the end
 
   // Did we succeed?
-  return (streams[id]->iterator != NULL);
+  return (stream->iterator != NULL);
 } //  tile_stream_advance
 
 /**
@@ -255,8 +274,16 @@ tile_stream_advance (int id)
 void
 tile_stream_close (int id)
 {
+  // Validate the stream
   if (! tile_stream_is_valid (id))
     return;
+
+  // Advance to the end of the stream so that any remaining pixels
+  // get cpies.
+  while (tile_stream_advance (id))
+    ;
+
+  // And update!
   TileStream *stream = streams[id];
   gimp_drawable_flush (stream->target);
   gimp_drawable_merge_shadow (stream->drawable, TRUE);
@@ -290,38 +317,19 @@ tile_stream_get (int id)
 int
 tile_stream_is_valid (int id)
 {
-  fprintf (stderr, "Checking validity of stream %d ... ", id);
-  if (id < 0)
-    {
-      fprintf (stderr, "Negative ID\n");
-      return 0;
-    }
-  if (id > MAX_TILE_STREAMS)
-    {
-      fprintf (stderr, "Invalid ID\n");
-      return 0;
-    }
-  if (streams[id] == NULL)
-    {
-      fprintf (stderr, "No associated stream.\n");
-      return 0;
-    }
-  fprintf (stderr, "Valid stream.\n");
-/*
   return ((id >= 0)
           && (id < MAX_TILE_STREAMS)
           && (streams[id] != NULL));
- */
 } // tile_stream_is_valid
 
 /**
  * Update the pixel data in the current tile.
  */
 int
-tile_update (int id, guchar *data)
+tile_update (int id, int size, guchar *data)
 {
   if (! tile_stream_is_valid (id))
     return -1;
-  copy_pixels (&(streams[id]->target_region), data);
+  copy_pixels (&(streams[id]->target_region), size, data);
   return 0;
 } // tile__update
