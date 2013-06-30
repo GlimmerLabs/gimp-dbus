@@ -83,7 +83,7 @@ GimpPixelRgn *tile_stream_get (int id);
 /**
  * Update the pixels in the current tile.
  */
-int tile_update (int id, guchar *data);
+int tile_update (int id, int size, guchar *data);
 
 /**
  * Determine if an id is valid.
