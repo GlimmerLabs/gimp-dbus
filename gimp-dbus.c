@@ -50,7 +50,7 @@
 /**
  * The "about" message.
  */
-#define GIMP_DBUS_ABOUT "Glimmer Labs' Gimp D-Bus plugin version 0.0.7"
+#define GIMP_DBUS_ABOUT "Glimmer Labs' Gimp D-Bus plugin version 0.0.8"
 
 /**
  * The service name that we use for gimp-dbus.
@@ -82,7 +82,6 @@
 // | Macros |
 // +--------+
 
-
 /**
  * (Optionally) Print a log message.
  *
@@ -102,6 +101,29 @@
 #define BEGIN(FUN) do { } while (0)
 #define END(FUN) do { } while (0)
 #endif
+
+/**
+ * Signal an error having to do with an argument.  
+ */
+#define SIGNAL_ARGUMENT_ERROR(INVOCATION, MESSAGE, ...) \
+  g_dbus_method_invocation_return_error ( \
+        INVOCATION, \
+        G_IO_ERROR, \
+        G_IO_ERROR_INVALID_ARGUMENT, \
+        MESSAGE, \
+        ##__VA_ARGS__)
+
+/**
+ * Signal a more general error.  (Unfortunately, I don't know what other
+ * parameters to use.
+ */
+#define SIGNAL_ERROR(INVOCATION, MESSAGE, ...) \
+  g_dbus_method_invocation_return_error ( \
+        INVOCATION, \
+        G_IO_ERROR, \
+        G_IO_ERROR_INVALID_ARGUMENT, \
+        MESSAGE, \
+        ##__VA_ARGS__)
 
 
 // +-------+-----------------------------------------------------------
@@ -251,7 +273,7 @@ static gboolean alt_handle_set_property (GDBusConnection  *connection,
  */
 static GDBusArgInfo *
 g_dbus_arg_new (gchar                *name,
-	        const gchar          *signature,
+                const gchar          *signature,
                 GDBusAnnotationInfo **annotations);
 
 
@@ -274,15 +296,38 @@ static const gchar alt_introspection_xml[] =
   "      <arg type='i' name='color' direction='in'/>"
   "      <arg type='i' name='red' direction='out'/>"
   "    </method>"
+  "    <method name='tile_stream_advance'>"
+  "      <arg type='i' name='stream' direction='in'/>"
+  "      <arg type='i' name='continues' direction='out'/>"
+  "    </method>"
+  "    <method name='tile_stream_close'>"
+  "      <arg type='i' name='stream' direction='in'/>"
+  "    </method>"
+  "    <method name='tile_stream_get'>"
+  "      <arg type='i' name='stream' direction='in'/>"
+  "      <arg type='i' name='size' direction='out'/>"
+  "      <arg type='ay' name='data' direction='out'/>"
+  "      <arg type='i' name='bpp' direction='out'/>"
+  "      <arg type='i' name='rowstride' direction='out'/>"
+  "      <arg type='i' name='x' direction='out'/>"
+  "      <arg type='i' name='y' direction='out'/>"
+  "      <arg type='i' name='width' direction='out'/>"
+  "      <arg type='i' name='height' direction='out'/>"
+  "    </method>"
+  "    <method name='tile_stream_is_valid'>"
+  "      <arg type='i' name='stream' direction='in'/>"
+  "      <arg type='i' name='valid' direction='out'/>"
+  "    </method>"
   "    <method name='tile_stream_new'>"
   "      <arg type='i' name='image' direction='in'/>"
   "      <arg type='i' name='drawable' direction='in'/>"
   "      <arg type='i' name='stream' direction='out'/>"
   "    </method>"
-  "    <method name='tile_stream_get'>"
+  "    <method name='tile_update'>"
   "      <arg type='i' name='stream' direction='in'/>"
-  "      <arg type='i' name='size' direction='out'/>"
-  "      <arg type='ay' name='bytes' direction='out'/>"
+  "      <arg type='i' name='size' direction='in'/>"
+  "      <arg type='ay' name='data' direction='in'/>"
+  "      <arg type='i' name='success' direction='out'/>"
   "    </method>"
   "  </interface>"
   "</node>";
@@ -342,14 +387,14 @@ DBus does the checking for us.
   // Check that we have one parameter and that it's an integer.
   if (nparams != 1)
     {
-      gimp_dbus_report_invalid_paramcount (invocation, "FUN", 1, nparams);
+      report_invalid_paramcount (invocation, "FUN", 1, nparams);
       return;
     } 
 
   GVariant *child = g_variant_get_child_value (parameters, 0);
   if (g_variant_get_type (child) != != G_VARIANT_TYPE_INT32)
     {
-      gimp_dbus_report_invalid_parameter (invocation, "FUN", 0, "integer", 
+      report_invalid_parameter (invocation, "FUN", 0, "integer", 
                                           child);
     }
  */
@@ -358,48 +403,56 @@ DBus does the checking for us.
  * Return an error about a particular parameter.
  */
 static void
-gimp_dbus_report_invalid_parameter (GDBusMethodInvocation *invocation,
+report_invalid_parameter (GDBusMethodInvocation *invocation,
                                     const gchar *method_name,
                                     int paramnum,
                                     const gchar *paramtype,
                                     GVariant *param)
 {
-  g_dbus_method_invocation_return_error (
+  SIGNAL_ARGUMENT_ERROR (
     invocation,
-    G_IO_ERROR,
-    G_IO_ERROR_INVALID_ARGUMENT,
     "%s expects %s for parameter %d, received %s",
      method_name, paramtype, paramnum, g_variant_get_type_string);
-} // gimp_dbus_report_invalid_parameter
+} // report_invalid_parameter
 
 /**
  * Return an error about the number of parameters.
  */
 static void
-gimp_dbus_report_invalid_paramcount (GDBusMethodInvocation *invocation,
+report_invalid_paramcount (GDBusMethodInvocation *invocation,
                                      const gchar *method_name,
                                      int expected,
                                      int actual)
 {
   if (expected == 1)
     {
-      g_dbus_method_invocation_return_error (
-        invocation,
-        G_IO_ERROR,
-        G_IO_ERROR_INVALID_ARGUMENT,
-        "%s expects 1 parameter, received %d",
-        method_name, actual);
-    } // if we expected one parameters
+      SIGNAL_ARGUMENT_ERROR (invocation,
+                             "%s expects 1 parameter, received %d",
+                             method_name, actual);
+    } // if we expected one parameter
   else
     {
-      g_dbus_method_invocation_return_error (
-        invocation,
-        G_IO_ERROR,
-        G_IO_ERROR_INVALID_ARGUMENT,
-        "%s expects %d parameters, received %d",
-        method_name, expected, actual);
-    }
-} // gimp_dbus_report_invalid_paramcount
+      SIGNAL_ARGUMENT_ERROR (invocation,
+                             "%s expects %d parameters, received %d",
+                             method_name, expected, actual);
+    } // if we expected multiple parameters
+} // report_invalid_paramcount
+
+/**
+ * Make sure that a tile stream sent to a handler is valid.  If not,
+ * return an error (which should stop the handler).
+ */
+static int
+handler_validate_tile_stream (int stream, GDBusMethodInvocation *invocation)
+{
+  if (! tile_stream_is_valid (stream))
+    {
+      LOG ("tile-stream-get: Invalid tile stream: %d", stream);
+      SIGNAL_ERROR (invocation, "could not create stream");
+      return 0;
+    } // if tile stream is invalid
+  return 1;
+} // handler_validate_tile_stream
 
 
 // +---------------------------------+---------------------------------
@@ -420,17 +473,13 @@ ggimp_dbus_handle_default (const gchar *method_name,
                            GDBusMethodInvocation *invocation,
                            GVariant *parameters)
 {
-  g_dbus_method_invocation_return_error (invocation,
-                                         G_IO_ERROR,
-                                         G_IO_ERROR_INVALID_ARGUMENT,
-                                         "GGimp: Invalid method: '%s'",
-                                         method_name);
+  SIGNAL_ARGUMENT_ERROR (invocation, "Invalid method: '%s'", method_name);
 } // ggimp_dbus_handle_default
 
 void
 ggimp_dbus_handle_quit (const gchar *method_name,
                         GDBusMethodInvocation *invocation,
-			GVariant *parameters)
+                        GVariant *parameters)
 {
   g_dbus_method_invocation_return_value (invocation, g_variant_new ("()"));
   g_main_loop_quit (loop);
@@ -439,7 +488,7 @@ ggimp_dbus_handle_quit (const gchar *method_name,
 void
 ggimp_dbus_handle_rgb_red (const gchar *method_name,
                            GDBusMethodInvocation *invocation,
-			   GVariant *parameters)
+                           GVariant *parameters)
 {
   // Grab the parameter
   GVariant *param = g_variant_get_child_value (parameters, 0);
@@ -454,33 +503,56 @@ ggimp_dbus_handle_rgb_red (const gchar *method_name,
 } // gimp_gbus_handle_rgb_red
 
 void
-ggimp_dbus_handle_tile_stream_get (const gchar *method_name,
-                                   GDBusMethodInvocation *invocation,
-			           GVariant *parameters)
+ggimp_dbus_handle_tile_stream_advance (const gchar *method_name,
+                                       GDBusMethodInvocation *invocation,
+                                       GVariant *parameters)
 {
   // Grab the parameters
   int stream = 
     g_variant_get_int32 (g_variant_get_child_value (parameters, 0));
   // Validate
-  if (! tile_stream_is_valid (stream))
-    {
-      LOG ("tile-stream-get: Invalid tile stream: %d", stream);
-      g_dbus_method_invocation_return_error (
-        invocation,
-        G_IO_ERROR,
-        G_IO_ERROR_INVALID_ARGUMENT,
-        "could not create stream");
-    } // if tile stream is invalid
-  // Get the next region
+  if (! handler_validate_tile_stream (stream, invocation))
+    return;
+  // Advance and return
+  GVariant *result = g_variant_new ("(i)", tile_stream_advance (stream));
+  g_dbus_method_invocation_return_value (invocation, result);
+} // ggimp_dbus_handle_tile_stream_advance
+
+void
+ggimp_dbus_handle_tile_stream_close (const gchar *method_name,
+                                     GDBusMethodInvocation *invocation,
+                                     GVariant *parameters)
+{
+  // Grab the parameters
+  int stream = 
+    g_variant_get_int32 (g_variant_get_child_value (parameters, 0));
+  // Validate
+  if (! handler_validate_tile_stream (stream, invocation))
+    return;
+  // Close and return
+  tile_stream_close (stream);
+  g_dbus_method_invocation_return_value (invocation, g_variant_new ("()"));
+} // ggimp_dbus_handle_tile_stream_close
+
+void
+ggimp_dbus_handle_tile_stream_get (const gchar *method_name,
+                                   GDBusMethodInvocation *invocation,
+                                   GVariant *parameters)
+{
+  // Grab the parameters
+  int stream = 
+    g_variant_get_int32 (g_variant_get_child_value (parameters, 0));
+  // Validate
+  if (! handler_validate_tile_stream (stream, invocation))
+    return;
+
+  // Get the region
   GimpPixelRgn *rgn = tile_stream_get (stream);
   if (rgn == NULL)
     {
       LOG ("tile-stream-get: Failed to get tile.\n");
-      g_dbus_method_invocation_return_error (
-        invocation,
-        G_IO_ERROR,
-        G_IO_ERROR_INVALID_ARGUMENT,
-        "could not get tile");
+      SIGNAL_ERROR (invocation, "could not get tile");
+      return; 
     } // if the region is null
 
   // Grab the bytes
@@ -492,8 +564,14 @@ ggimp_dbus_handle_tile_stream_get (const gchar *method_name,
   // Build the return value
   GVariantBuilder builder;
   g_variant_builder_init (&builder, G_VARIANT_TYPE_TUPLE);
-  g_variant_builder_add_value (&builder, g_variant_new ("i", size));
+  g_variant_builder_add_value (&builder, g_variant_new_int32 (size));
   g_variant_builder_add_value (&builder, bytes);
+  g_variant_builder_add_value (&builder, g_variant_new_int32 (rgn->bpp));
+  g_variant_builder_add_value (&builder, g_variant_new_int32 (rgn->rowstride));
+  g_variant_builder_add_value (&builder, g_variant_new_int32 (rgn->x));
+  g_variant_builder_add_value (&builder, g_variant_new_int32 (rgn->y));
+  g_variant_builder_add_value (&builder, g_variant_new_int32 (rgn->w));
+  g_variant_builder_add_value (&builder, g_variant_new_int32 (rgn->h));
 
   // And we're done
   g_dbus_method_invocation_return_value (invocation, 
@@ -501,30 +579,101 @@ ggimp_dbus_handle_tile_stream_get (const gchar *method_name,
 } // ggimp_dbus_handle_tile_stream_get
 
 void
+ggimp_dbus_handle_tile_stream_is_valid (const gchar *method_name,
+                                        GDBusMethodInvocation *invocation,
+                                        GVariant *parameters)
+{
+  // Grab the parameters
+  int stream = 
+    g_variant_get_int32 (g_variant_get_child_value (parameters, 0));
+  // Do the computation and return
+  GVariant *result = g_variant_new ("(i)", tile_stream_is_valid (stream));
+  g_dbus_method_invocation_return_value (invocation, result);
+} // ggimp_dbus_handle_tile_stream_is_valid
+
+void
 ggimp_dbus_handle_tile_stream_new (const gchar *method_name,
                                    GDBusMethodInvocation *invocation,
-			           GVariant *parameters)
+                                   GVariant *parameters)
 {
   // Grab the parameters
   int image = 
     g_variant_get_int32 (g_variant_get_child_value (parameters, 0));
   int drawable = 
     g_variant_get_int32 (g_variant_get_child_value (parameters, 1));
+
+  // Validate the parameters
+  if (! gimp_image_is_valid (image))
+    {
+      LOG ("tile_stream_new: invalid image %d\n", image);
+      report_invalid_parameter (invocation, 
+                                "tile_stream_new",
+                                1,
+                                "image",
+                                g_variant_get_child_value (parameters, 0));
+      return;
+    } // if it's an invalid image
+  if (! gimp_drawable_is_valid (drawable))
+    {
+      LOG ("tile_stream_new: invalid drawable %d\n", drawable);
+      report_invalid_parameter (invocation, 
+                                "tile_stream_new",
+                                2,
+                                "drawable",
+                                g_variant_get_child_value (parameters, 1));
+      return;
+    } // if it's an invalid drawable
+  if (gimp_drawable_get_image (drawable) != image)
+    {
+      LOG ("tile_stream_new: drawable %d does not match image %d\n", 
+           drawable, image);
+      SIGNAL_ARGUMENT_ERROR (invocation, "drawable does not match image");
+      return;
+    } // if the items don't match.
+
   // Build the tile stream
   int stream = drawable_new_tile_stream (image, drawable);
   if (! tile_stream_is_valid (stream))
     {
-      g_dbus_method_invocation_return_error (
-        invocation,
-        G_IO_ERROR,
-        G_IO_ERROR_INVALID_ARGUMENT,
-        "could not create stream");
+      SIGNAL_ERROR (invocation, "could not create stream");
+      return;
     } // if tile stream is invalid
   // Convert it back to a GVariant
   GVariant *result = g_variant_new ("(i)", stream);
   // And return it
   g_dbus_method_invocation_return_value (invocation, result);
 } // ggimp_dbus_handle_tile_stream_new
+
+void
+ggimp_dbus_handle_tile_update (const gchar *method_name,
+                               GDBusMethodInvocation *invocation,
+                               GVariant *parameters)
+{
+  // Grab the parameters
+  int stream = 
+    g_variant_get_int32 (g_variant_get_child_value (parameters, 0));
+  int size =
+    g_variant_get_int32 (g_variant_get_child_value (parameters, 1));
+  gsize realsize;
+  GVariant *wrapped_data = g_variant_get_child_value (parameters, 2);
+  guint8 *data = (guint8 *) g_variant_get_fixed_array (wrapped_data,
+                                                       &realsize,
+                                                       sizeof (guint8));
+  if (size > realsize)
+    {
+      SIGNAL_ARGUMENT_ERROR (invocation, "size > number of bytes");
+      return;
+    }
+  // Validate
+  if (! handler_validate_tile_stream (stream, invocation))
+    return;
+
+  // Call the underlying function
+  int result = tile_update (stream, size, data);
+  // And return
+  g_dbus_method_invocation_return_value (invocation, 
+                                         g_variant_new ("(i)", result));
+} // ggimp_dbus_handle_tile_update
 
 
 // +------------------------+------------------------------------------
@@ -543,12 +692,16 @@ alt_handle_method_call (GDBusConnection       *connection,
 {
   static HandlerEntry alt_handlers[] =
     {
-      { "ggimp_about",          ggimp_dbus_handle_about           },
-      { "ggimp_quit",           ggimp_dbus_handle_quit            },
-      { "ggimp_rgb_red",        ggimp_dbus_handle_rgb_red         },
-      { "tile_stream_get",      ggimp_dbus_handle_tile_stream_get },
-      { "tile_stream_new",      ggimp_dbus_handle_tile_stream_new },
-      { NULL,                   ggimp_dbus_handle_default         }
+      { "ggimp_about",          ggimp_dbus_handle_about                },
+      { "ggimp_quit",           ggimp_dbus_handle_quit                 },
+      { "ggimp_rgb_red",        ggimp_dbus_handle_rgb_red              },
+      { "tile_stream_advance",  ggimp_dbus_handle_tile_stream_advance  },
+      { "tile_stream_close",    ggimp_dbus_handle_tile_stream_close    },
+      { "tile_stream_get",      ggimp_dbus_handle_tile_stream_get      },
+      { "tile_stream_is_valid", ggimp_dbus_handle_tile_stream_is_valid },
+      { "tile_stream_new",      ggimp_dbus_handle_tile_stream_new      },
+      { "tile_update",          ggimp_dbus_handle_tile_update          },
+      { NULL,                   ggimp_dbus_handle_default              }
     };
 
   int i;
@@ -577,8 +730,8 @@ alt_handle_get_property (GDBusConnection  *connection,
 {
   g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
                "No property %s found in interface %s.",
-	       property_name, 
-	       interface_name);
+               property_name, 
+               interface_name);
 
   // NULL signals failure
   return NULL;    
@@ -596,8 +749,8 @@ alt_handle_set_property (GDBusConnection  *connection,
 {
   g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
                "No property %s found in interface %s.",
-	       property_name, 
-	       interface_name);
+               property_name, 
+               interface_name);
   // false signals failure.
   return FALSE; 
 }// alt_handle_set_property
@@ -613,9 +766,9 @@ pdb_handle_method_call (GDBusConnection       *connection,
                         gpointer               user_data)
 {
   gimp_dbus_handle_pdb_method_call (connection, 
-  			            method_name, 
-			            parameters, 
-			            invocation);
+                                    method_name, 
+                                    parameters, 
+                                    invocation);
 } // pdb_handle_method_call
 
 static GVariant *
@@ -629,8 +782,8 @@ pdb_handle_get_property (GDBusConnection  *connection,
 {
   g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
                "No property %s found in interface %s.",
-	       property_name, 
-	       interface_name);
+               property_name, 
+               interface_name);
 
   // NULL signals failure
   return NULL;    
@@ -648,8 +801,8 @@ pdb_handle_set_property (GDBusConnection  *connection,
 {
   g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
                "No property %s found in interface %s.",
-	       property_name, 
-	       interface_name);
+               property_name, 
+               interface_name);
   // false signals failure.
   return FALSE; 
 }// pdb_handle_set_property
@@ -673,6 +826,13 @@ on_bus_acquired (GDBusConnection *connection,
    
   alt_introspection_data = 
     g_dbus_node_info_new_for_xml (alt_introspection_xml, NULL);
+
+  if (alt_introspection_data == NULL)
+    {
+      // Hack!
+      fprintf (stderr, "Could not create alt_introspection_data\n");
+      exit (1);
+    }
 
   alt_registration_id = 
     g_dbus_connection_register_object (connection,
@@ -842,7 +1002,7 @@ gimp_dbus_g_variant_to_gimp_param (GVariant         *parameter,
     case GIMP_PDB_COLOR:
       temp32 = g_variant_get_int32 (parameter);
       LOG ("  parameter  '%s' is %d, will be color",
-	   paramdef->name, param->data.d_int32);   
+           paramdef->name, param->data.d_int32);   
       // Unpack r, g, and b as uchars 
       r = (guchar) (temp32 >> 16);
       g = (guchar) ((temp32 >> 8) & 255);
@@ -883,10 +1043,10 @@ gimp_dbus_g_variant_to_gimp_param (GVariant         *parameter,
          
       sarray = g_try_malloc ((nchildren+1) * sizeof (gchar *));
       for (arraycounter = 0; arraycounter<nchildren; arraycounter++)
-	{
-	  g_variant_get_child (parameter, arraycounter, "s", &tempc);
-	  sarray[arraycounter] = tempc; 
-	}
+        {
+          g_variant_get_child (parameter, arraycounter, "s", &tempc);
+          sarray[arraycounter] = tempc; 
+        }
       sarray[nchildren] = NULL;
       param->data.d_stringarray = sarray;
       LOG ("  parameter '%s' is an array of strings", paramdef->name);
@@ -898,10 +1058,10 @@ gimp_dbus_g_variant_to_gimp_param (GVariant         *parameter,
       if (array32 == NULL)
         return FALSE;
       for (arraycounter = 0; arraycounter<nchildren; arraycounter++)
-	{
-	  g_variant_get_child (parameter, arraycounter, "i", &temp32);
-	  array32[arraycounter] = temp32; 
-	}
+        {
+          g_variant_get_child (parameter, arraycounter, "i", &temp32);
+          array32[arraycounter] = temp32; 
+        }
       param->data.d_int32array = array32;
       LOG ("  parameter '%s' is an array of int32s", paramdef->name);
       return TRUE; 
@@ -912,10 +1072,10 @@ gimp_dbus_g_variant_to_gimp_param (GVariant         *parameter,
       if (array16 == NULL)
         return FALSE;
       for (arraycounter = 0; arraycounter<nchildren; arraycounter++)
-	{
-	  g_variant_get_child (parameter, arraycounter, "n", &temp16);
-	  array16[arraycounter] = (gint16) temp16;  
-	}
+        {
+          g_variant_get_child (parameter, arraycounter, "n", &temp16);
+          array16[arraycounter] = (gint16) temp16;  
+        }
       param->data.d_int16array = array16;
       LOG ("  parameter '%s' is an array of int16s", paramdef->name);
       return TRUE; 
@@ -933,10 +1093,10 @@ gimp_dbus_g_variant_to_gimp_param (GVariant         *parameter,
       nchildren = g_variant_n_children (parameter);
       arrayd = g_try_malloc ((nchildren) * sizeof (gdouble));
       for (arraycounter = 0; arraycounter<nchildren; arraycounter++)
-	{
-	  g_variant_get_child (parameter, arraycounter, "d", &tempd);
-	  arrayd[arraycounter] = tempd;  
-	}
+        {
+          g_variant_get_child (parameter, arraycounter, "d", &tempd);
+          arrayd[arraycounter] = tempd;  
+        }
       param->data.d_floatarray = arrayd;
       LOG ("  parameter '%s' is an array of floats", paramdef->name);
       return TRUE; 
@@ -1024,34 +1184,34 @@ gimp_dbus_gimp_param_to_g_variant (GimpParam value, int *asize)
     case GIMP_PDB_STRINGARRAY:
       g_variant_builder_init (&abuilder, G_VARIANT_TYPE_STRING_ARRAY);
       for (index = 0; index< *asize; index++)
-	{
-	  g_variant_builder_add_value 
-	    (&abuilder, g_variant_new("s", 
-				      value.data.d_stringarray[index]));
-	} // for 
+        {
+          g_variant_builder_add_value 
+            (&abuilder, g_variant_new("s", 
+                                      value.data.d_stringarray[index]));
+        } // for 
       return g_variant_builder_end(&abuilder);
 
     case GIMP_PDB_INT32ARRAY:    
       g_variant_builder_init (&abuilder, ((const GVariantType *) "ai"));
          
       for (index = 0; index< *asize; index++)
-	{
-	  g_variant_builder_add_value 
-	    (&abuilder, g_variant_new("i",
-				      value.data.d_int32array[index]));
-	 
-	}
+        {
+          g_variant_builder_add_value 
+            (&abuilder, g_variant_new("i",
+                                      value.data.d_int32array[index]));
+         
+        }
       return g_variant_builder_end(&abuilder);
 
     case GIMP_PDB_INT16ARRAY:
       g_variant_builder_init (&abuilder, G_VARIANT_TYPE_TUPLE);
       for (index = 0; index< *asize; index++)
-	{
-	  g_variant_builder_add_value 
-	    (&abuilder, g_variant_new("n", 
-				      value.data.d_int16array[index]));
-	 
-	}
+        {
+          g_variant_builder_add_value 
+            (&abuilder, g_variant_new("n", 
+                                      value.data.d_int16array[index]));
+         
+        }
       return g_variant_builder_end(&abuilder);
 
       //INT8ARRAY
@@ -1069,11 +1229,11 @@ gimp_dbus_gimp_param_to_g_variant (GimpParam value, int *asize)
       g_variant_builder_init (&abuilder, ((const GVariantType *) "ai"));
 
       for (index = 0; index< *asize; index++)
-	{
+        {
           guint8 byte = value.data.d_int8array[index];
-	  g_variant_builder_add_value (&abuilder, g_variant_new("i", byte));
+          g_variant_builder_add_value (&abuilder, g_variant_new("i", byte));
           LOG ("bytes[%d] = %d\n", index, byte);
-	} // for
+        } // for
    
       return g_variant_builder_end (&abuilder);
 #endif
@@ -1081,12 +1241,12 @@ gimp_dbus_gimp_param_to_g_variant (GimpParam value, int *asize)
     case GIMP_PDB_FLOATARRAY:
       g_variant_builder_init (&abuilder, G_VARIANT_TYPE_TUPLE);
       for (index = 0; index< *asize; index++)
-	{
-	  g_variant_builder_add_value 
-	    (&abuilder, g_variant_new("d", 
-				      value.data.d_floatarray[index]));
-	 
-	}
+        {
+          g_variant_builder_add_value 
+            (&abuilder, g_variant_new("d", 
+                                      value.data.d_floatarray[index]));
+         
+        }
       return g_variant_builder_end(&abuilder);
     default:
       return NULL;
@@ -1178,7 +1338,7 @@ g_dbus_node_info_new (gchar *path,
  */
 static GDBusArgInfo *
 g_dbus_arg_new (gchar                *name,
-	        const gchar          *signature,
+                const gchar          *signature,
                 GDBusAnnotationInfo **annotations)
 {
   GDBusArgInfo *arg = g_try_malloc (sizeof (GDBusArgInfo));
@@ -1198,9 +1358,9 @@ g_dbus_arg_new (gchar                *name,
  */
 GDBusMethodInfo *
 g_dbus_method_info_build (gchar *name,
-			  GDBusArgInfo **in_args, 
-			  GDBusArgInfo **out_args,
-			  GDBusAnnotationInfo **annotations)
+                          GDBusArgInfo **in_args, 
+                          GDBusArgInfo **out_args,
+                          GDBusAnnotationInfo **annotations)
 {
   GDBusMethodInfo *method = g_try_malloc (sizeof (GDBusMethodInfo));
   if (method == NULL)
@@ -1223,7 +1383,7 @@ procnamesbuilder ()
   struct gimpnames *gimpnamelist;
   gimpnamelist =  g_try_malloc (sizeof (struct gimpnames));
   gimp_procedural_db_query (".*", ".*", ".*", ".*", ".*", ".*", ".*", 
-			    &gimpnamelist->nprocs, &gimpnamelist->procnames);
+                            &gimpnamelist->nprocs, &gimpnamelist->procnames);
   return gimpnamelist;
 } //gimpnames
 
@@ -1298,9 +1458,9 @@ generate_pdb_method_info (gchar *proc_name)
   //used to be proc_name
   GDBusMethodInfo * result =
     g_dbus_method_info_build (strrep (g_strdup (proc_name), '-', '_'),
-			      args,
-			      returns,
-			      NULL);
+                              args,
+                              returns,
+                              NULL);
 
 
   return result;
@@ -1380,11 +1540,7 @@ gimp_dbus_handle_pdb_method_call (GDBusConnection       *connection,
                                       &formals, &return_types))
     {
       LOG ("invalid procedure call - no such method %s", proc_name);
-      g_dbus_method_invocation_return_error (invocation,
-                                             G_IO_ERROR,
-                                             G_IO_ERROR_INVALID_ARGUMENT,
-                                             "Invalid method: '%s'",
-                                             method_name);
+      SIGNAL_ARGUMENT_ERROR (invocation, "Invalid method: '%s'", method_name);
       return FALSE;
     } // if we can't get the information
   LOG ("Successfully extracted PDB info.");
@@ -1396,11 +1552,10 @@ gimp_dbus_handle_pdb_method_call (GDBusConnection       *connection,
   if (! gimp_dbus_g_variant_to_gimp_array (parameters, formals, &actuals))
     {
       LOG ("invalid procedure call - could not convert parameters");
-      g_dbus_method_invocation_return_error (invocation,
-                                             G_IO_ERROR,
-                                             G_IO_ERROR_INVALID_ARGUMENT,
-                                             "Invalid parameter in call to '%s'",
-                                             method_name);
+      SIGNAL_ARGUMENT_ERROR (invocation, 
+                             "Invalid parameter in call to '%s'",
+                             method_name);
+      return FALSE;
     } // if we could not convert to a gimp_array
 
   // Do the call
@@ -1412,13 +1567,10 @@ gimp_dbus_handle_pdb_method_call (GDBusConnection       *connection,
   if (values == NULL)
     {
       LOG ("Call to %s failed", proc_name);
-      g_dbus_method_invocation_return_error (invocation,
-                                             G_IO_ERROR,
-                                             G_IO_ERROR_INVALID_ARGUMENT,
-                                             "call to %s failed "
-                                             "for unknown reason",
-                                             proc_name);
-       return FALSE;
+      SIGNAL_ERROR (invocation, 
+                    "call to %s failed for unknown reason", 
+		    proc_name);
+      return FALSE;
     } // If call to procedure2 fails
 
   if (values[0].data.d_status != GIMP_PDB_SUCCESS)
@@ -1440,12 +1592,7 @@ gimp_dbus_handle_pdb_method_call (GDBusConnection       *connection,
             reason = "because it was canceled";
             break;
         } // switch (status)
-      g_dbus_method_invocation_return_error (invocation,
-                                             G_IO_ERROR,
-                                             G_IO_ERROR_INVALID_ARGUMENT,
-                                             "call to %s failed %s",
-                                             proc_name,
-                                             reason);
+      SIGNAL_ERROR (invocation, "call to %s failed %s", proc_name, reason);
       return FALSE;
     } // if gimp reports an error
 
@@ -1477,16 +1624,16 @@ query (void)
   // Install the default server.  Since this is an extension, it should
   // start immediately.
   gimp_install_procedure ("GimpDBusServer",
-			  "A Gimp D-Bus Server",
-			  "Publishes the PDB and some other procedures on D-Bus",
-			  "Samuel A. Rebelsky and a host of his students.",
-			  "Copyright (c) 2012-13 Samuel A. Rebelsky",
-			  "2012-13",
+                          "A Gimp D-Bus Server",
+                          "Publishes the PDB and some other procedures on D-Bus",
+                          "Samuel A. Rebelsky and a host of his students.",
+                          "Copyright (c) 2012-13 Samuel A. Rebelsky",
+                          "2012-13",
                           GIMP_DBUS_MENU "DBus Server",
-			  NULL, 
-			  GIMP_EXTENSION,
+                          NULL, 
+                          GIMP_EXTENSION,
                           0, 0,
-			  NULL, NULL);
+                          NULL, NULL);
 #endif
 
   // Install support for restarting the server.
@@ -1495,16 +1642,16 @@ query (void)
       { GIMP_PDB_INT32, "run-mode", "Run mode" }
     };
   gimp_install_procedure ("GimpDBusServer",
-			  "A Gimp D-Bus Server",
-			  "Publishes the PDB and some other procedures on D-Bus",
-			  "Samuel A. Rebelsky and a host of his students.",
-			  "Copyright (c) 2012-13 Samuel A. Rebelsky",
-			  "2012-13",
+                          "A Gimp D-Bus Server",
+                          "Publishes the PDB and some other procedures on D-Bus",
+                          "Samuel A. Rebelsky and a host of his students.",
+                          "Copyright (c) 2012-13 Samuel A. Rebelsky",
+                          "2012-13",
                           GIMP_DBUS_MENU "DBus Server",
-			  NULL, 
-			  GIMP_PLUGIN,
-			  G_N_ELEMENTS (server_args), 0,
-			  server_args, NULL);
+                          NULL, 
+                          GIMP_PLUGIN,
+                          G_N_ELEMENTS (server_args), 0,
+                          server_args, NULL);
 
   // Install a silly procedure (for testing)
   static GimpParamDef silly_args[] =
@@ -1516,17 +1663,17 @@ query (void)
       { GIMP_PDB_STRING, "message", "a message from the server." }
     };
   gimp_install_procedure ("silly",
-			  "A silly experiment",
-			  "An experiment with serving multiple functions",
-			  "Samuel A. Rebelsky",
-			  "Copyright (c) 2013 Samuel A. Rebelsky",
-			  "2013",
+                          "A silly experiment",
+                          "An experiment with serving multiple functions",
+                          "Samuel A. Rebelsky",
+                          "Copyright (c) 2013 Samuel A. Rebelsky",
+                          "2013",
                           NULL,
-			  NULL, 
-			  GIMP_PLUGIN,
-			  G_N_ELEMENTS (silly_args), 
+                          NULL, 
+                          GIMP_PLUGIN,
+                          G_N_ELEMENTS (silly_args), 
                           G_N_ELEMENTS (silly_return),
-			  silly_args, 
+                          silly_args, 
                           silly_return);
 } // query
 
@@ -1557,8 +1704,9 @@ run_server (const gchar      *name,
   GimpPDBStatusType status = GIMP_PDB_SUCCESS;
 
 #ifdef DEBUG
-  LOG ("pid is %d", getpid ());
+  LOG ("Waiting for debugger, pid is %d", getpid ());
   sleep (1);
+  LOG ("Done waiting.");
 #endif
 
   /* Setting mandatory output values */
