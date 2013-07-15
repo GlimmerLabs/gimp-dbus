@@ -256,9 +256,6 @@ tile_stream_advance (int id)
   // Copy pixels over in case the user doesn't change them
   if (stream->iterator != NULL)
     {
-#ifdef DEBUG
-      fprintf (stderr, "Copying original from tile %d.\n", stream->n);
-#endif
       copy_pixels (&(stream->target_region),
                    stream->source_region.rowstride * stream->source_region.h,
                    stream->source_region.data);
