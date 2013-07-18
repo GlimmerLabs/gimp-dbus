@@ -246,6 +246,10 @@ tile_stream_advance (int id)
   // Get the stream
   TileStream *stream = streams[id];
 
+  // Make sure that the iterator is not already at the end
+  if (stream->iterator == NULL)
+    return 0;
+
   // Advance the iterator.  This has the side effect of changing
   // streams[id]->source_region and streams[id]->target_region.
   stream->iterator = gimp_pixel_rgns_process (stream->iterator);
