@@ -1021,6 +1021,7 @@ gimp_dbus_g_variant_to_gimp_param (GVariant         *parameter,
     case GIMP_PDB_LAYER:
     case GIMP_PDB_CHANNEL:
     case GIMP_PDB_DRAWABLE:
+    case GIMP_PDB_ITEM:
     case GIMP_PDB_SELECTION:
     case GIMP_PDB_BOUNDARY:
     case GIMP_PDB_VECTORS:
@@ -1164,6 +1165,7 @@ gimp_dbus_gimp_param_to_g_variant (GimpParam value, int *asize)
     case GIMP_PDB_LAYER:
     case GIMP_PDB_CHANNEL:
     case GIMP_PDB_DRAWABLE:
+    case GIMP_PDB_ITEM:
     case GIMP_PDB_SELECTION:
     case GIMP_PDB_BOUNDARY:
     case GIMP_PDB_VECTORS:
